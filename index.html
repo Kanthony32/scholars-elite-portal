@@ -811,6 +811,120 @@ function StaffView({sb,session,displayName}){
   </div>;
 }
 
+// ── COMPARE VIEW ──────────────────────────────────────────────────────────────
+const FACTOR_WEIGHTS_DISPLAY={bbLevel:25,opportunity:20,athletic:15,skill:15,academic:10,style:5,geo:5,relationship:5};
+const COMPARE_LABELS={bbLevel:"BB Level",opportunity:"Opportunity",athletic:"Athletic Fit",skill:"Skill Fit",academic:"Academic",style:"Style of Play",geo:"Geography",relationship:"Relationship"};
+
+function CompareView({athlete,board}){
+  const scored=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score);
+  const[idA,setIdA]=useState(scored[0]?.id||"");const[idB,setIdB]=useState(scored[1]?.id||"");const[hovered,setHovered]=useState(null);
+  const sA=scored.find(s=>s.id===idA);const sB=scored.find(s=>s.id===idB);
+  if(board.length<2)return<div className="rounded-2xl p-10 text-center" style={{background:C.card,border:`1px dashed ${C.border}`}}><div style={{fontSize:32,marginBottom:12}}>⚖️</div><div style={{color:C.text,fontWeight:700,marginBottom:4}}>Add 2+ schools to compare</div><div style={{color:C.muted,fontSize:13}}>Head to the Schools tab and add at least two schools to your board first.</div></div>;
+  const pl=athlete.player_level||athlete.playerLevel||"PL3";
+  const plN=parseInt(pl.replace("PL",""));
+  const cA=sA?getBand(sA.score).color:C.muted;const cB=sB?getBand(sB.score).color:C.muted;
+  const winner=sA&&sB?(sA.score>sB.score?"A":sA.score<sB.score?"B":"tie"):"tie";
+  return<div>
+    <div style={{color:C.muted,fontSize:12,marginBottom:16}}>Compare two schools side-by-side to see exactly where one beats the other.</div>
+    <div className="grid grid-cols-2 gap-3 mb-5">
+      {[{id:idA,setId:setIdA,col:cA,school:sA},{id:idB,setId:setIdB,col:cB,school:sB}].map((s,i)=>(
+        <div key={i}>
+          <select value={s.id} onChange={e=>s.setId(e.target.value)} className="w-full px-3 py-2 rounded-xl text-xs font-bold outline-none mb-2" style={{background:C.card2,border:`1px solid ${s.col}44`,color:s.col,cursor:"pointer"}}>
+            {scored.filter(sc=>s.id===sc.id||sc.id!==(i===0?idB:idA)).map(sc=><option key={sc.id} value={sc.id}>{sc.school}</option>)}
+          </select>
+          {s.school&&<div className="rounded-xl p-3 text-center" style={{background:s.col+"12",border:`1px solid ${s.col}33`}}>
+            <ScoreRing score={s.school.score} size={56}/>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",color:C.text,fontSize:15,fontWeight:800,marginTop:6,lineHeight:1}}>{s.school.school}</div>
+            <div style={{color:C.muted,fontSize:11,marginTop:2}}>{s.school.conference}</div>
+            <div className="flex justify-center gap-1 mt-2 flex-wrap"><TierBadge tier={s.school.tier||"T3"}/></div>
+            <div style={{color:s.col,fontSize:11,fontWeight:700,marginTop:4}}>{getRecruit(plN,parseInt((s.school.tier||"T3").replace("T","")),s.school.score)}</div>
+          </div>}
+        </div>
+      ))}
+    </div>
+    {sA&&sB&&<>
+      <div className="flex items-center gap-3 mb-3 p-3 rounded-xl" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div className="flex-1 text-center"><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:38,fontWeight:800,color:cA,lineHeight:1}}>{sA.score}</div><div style={{color:C.muted,fontSize:10}}>Score</div></div>
+        <div style={{color:C.muted,fontSize:11,fontWeight:700}}>VS</div>
+        <div className="flex-1 text-center"><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:38,fontWeight:800,color:cB,lineHeight:1}}>{sB.score}</div><div style={{color:C.muted,fontSize:10}}>Score</div></div>
+      </div>
+      {winner!=="tie"&&<div className="p-3 rounded-xl mb-4 text-center text-sm font-bold" style={{background:(winner==="A"?cA:cB)+"15",border:`1px solid ${(winner==="A"?cA:cB)}33`,color:winner==="A"?cA:cB}}>
+        🏆 {winner==="A"?sA.school:sB.school} is the stronger fit by {Math.abs(sA.score-sB.score)} points
+      </div>}
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Factor Breakdown</div>
+      <div className="flex flex-col gap-1.5">
+        {Object.entries(COMPARE_LABELS).map(([k,label])=>{
+          const vA=(sA.factors||{})[k]||0,vB=(sB.factors||{})[k]||0;const winA=vA>vB,winB=vB>vA;
+          return<div key={k} className="p-2.5 rounded-xl transition-all" style={{background:hovered===k?C.card2:C.card,border:`1px solid ${C.border}`}} onMouseEnter={()=>setHovered(k)} onMouseLeave={()=>setHovered(null)}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <div style={{color:winA?cA:C.muted,fontSize:12,fontWeight:winA?700:400,flex:1,textAlign:"right"}}>{vA}/10</div>
+              <div style={{color:C.sub,fontSize:10,fontWeight:600,width:88,textAlign:"center",flexShrink:0}}>{label}</div>
+              <div style={{color:winB?cB:C.muted,fontSize:12,fontWeight:winB?700:400,flex:1}}>{vB}/10</div>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden flex justify-end" style={{background:C.border}}><div style={{width:`${vA*10}%`,height:"100%",background:winA?cA:C.muted+"55",borderRadius:9999,transition:"width 0.3s"}}/></div>
+              <div className="w-1 h-1 rounded-full flex-shrink-0" style={{background:C.border}}/>
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{background:C.border}}><div style={{width:`${vB*10}%`,height:"100%",background:winB?cB:C.muted+"55",borderRadius:9999,transition:"width 0.3s"}}/></div>
+            </div>
+          </div>;
+        })}
+      </div>
+    </>}
+  </div>;
+}
+
+// ── CALENDAR VIEW ─────────────────────────────────────────────────────────────
+const CALENDAR_EVENTS=[
+  {date:"Apr 1",month:"APR",day:"1",label:"Spring Evaluation Period Opens",type:"active",detail:"College coaches can attend spring events, tournaments, and practices. This is a prime visibility window. Make sure your athlete is competing at high-level spring events.",division:"D-I NCAA"},
+  {date:"Apr 15",month:"APR",day:"15",label:"EYBL / AAU Season Opens",type:"event",detail:"Nike EYBL Circuit and major AAU programs begin their seasons. The highest-visibility club events of the spring. Every major D-I staff will have evaluators on the road.",division:"Club Season"},
+  {date:"May 1",month:"MAY",day:"1",label:"Quiet Period Begins",type:"restricted",detail:"Coaches may make recruiting calls but cannot visit recruits off-campus or attend events. Focus on phone calls, video calls, and sending updated film.",division:"D-I NCAA"},
+  {date:"Jun 1",month:"JUN",day:"1",label:"Contact Period Opens",type:"active",detail:"Coaches may contact recruits off-campus. Official visits can begin. This is when most relationships accelerate — expect more frequent contact from schools of interest.",division:"D-I NCAA"},
+  {date:"Jun 12",month:"JUN",day:"12",label:"Peach Jam / EYBL Nationals",type:"event",detail:"The most-watched grassroots event of the year. Every major D-I program will have head coaches or assistants in attendance. Performing well here can dramatically change a player's offer board.",division:"Club — EYBL"},
+  {date:"Jul 1",month:"JUL",day:"1",label:"Summer Evaluation Period",type:"active",detail:"The most critical 4-week window of the recruiting calendar. More offers are extended during July than any other month. Staff should be maximizing athlete visibility at NCAA-certified events.",division:"D-I NCAA"},
+  {date:"Jul 31",month:"JUL",day:"31",label:"Summer Evaluation Ends",type:"restricted",detail:"Coaches return to campus. The evaluation period closes. If your athlete hasn't received attention from a program by now, focus on fall events and updated film to re-engage.",division:"D-I NCAA"},
+  {date:"Sep 1",month:"SEP",day:"1",label:"Official Visit Window Opens",type:"active",detail:"Athletes can begin taking official paid campus visits to programs. Schools cover travel, housing, and meals. This signals serious mutual interest. Prioritize visits to schools on the board.",division:"D-I NCAA"},
+  {date:"Nov 8",month:"NOV",day:"8",label:"Early Signing Period",type:"event",detail:"Athletes can sign National Letters of Intent. Most top recruits sign during this window. Once signed, the recruiting process is officially complete.",division:"D-I NCAA"},
+  {date:"Apr 16",month:"APR",day:"16",label:"National Signing Day (Spring)",type:"event",detail:"Final signing period for athletes who did not sign in November. Late decisions, transfers, and late bloomers who received offers after the early period.",division:"D-I NCAA"},
+];
+const TYPE_STYLE={active:{bg:"#22C55E",label:"Active Window"},restricted:{bg:"#F5A623",label:"Restricted"},event:{bg:"#602F96",label:"Key Event"}};
+
+function CalendarView(){
+  const[selected,setSelected]=useState(null);const[filter,setFilter]=useState("all");
+  const filtered=CALENDAR_EVENTS.filter(e=>filter==="all"||(filter==="windows"&&e.type!=="event")||(filter==="events"&&e.type==="event"));
+  return<div>
+    <div style={{color:C.muted,fontSize:12,marginBottom:14}}>NCAA recruiting calendar for the 2025–26 cycle. Tap any event for details.</div>
+    <div className="flex gap-2 flex-wrap mb-4">
+      {Object.entries(TYPE_STYLE).map(([type,s])=><div key={type} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{background:s.bg+"18",border:`1px solid ${s.bg}33`}}><div className="w-2 h-2 rounded-full" style={{background:s.bg}}/><span style={{color:s.bg,fontSize:10,fontWeight:700}}>{s.label}</span></div>)}
+    </div>
+    <div className="flex gap-2 mb-5">
+      {[{v:"all",l:"All"},{v:"windows",l:"NCAA Windows"},{v:"events",l:"Key Events"}].map(f=>(
+        <button key={f.v} onClick={()=>setFilter(f.v)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:filter===f.v?C.primary:C.card2,color:filter===f.v?"white":C.muted,border:`1px solid ${filter===f.v?C.primary:C.border}`,cursor:"pointer"}}>{f.l}</button>
+      ))}
+    </div>
+    <div className="relative">
+      <div className="absolute left-7 top-0 bottom-0 w-px" style={{background:C.border}}/>
+      <div className="flex flex-col gap-2">
+        {filtered.map((e,i)=>{
+          const s=TYPE_STYLE[e.type];const isOpen=selected===i;
+          return<button key={i} onClick={()=>setSelected(isOpen?null:i)} className="relative flex items-start gap-4 text-left w-full" style={{cursor:"pointer"}}>
+            <div className="w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0 z-10 font-black" style={{background:s.bg+"20",border:`2px solid ${s.bg}55`,color:s.bg}}>
+              <div style={{fontSize:9,fontWeight:800,letterSpacing:1}}>{e.month}</div>
+              <div style={{fontSize:20,lineHeight:1}}>{e.day}</div>
+            </div>
+            <div className={`flex-1 p-3.5 rounded-xl transition-all`} style={{background:isOpen?s.bg+"15":C.card,border:`1px solid ${isOpen?s.bg+"55":C.border}`}}>
+              <div className="flex items-start justify-between gap-2">
+                <div style={{color:C.text,fontWeight:700,fontSize:13,lineHeight:1.3}}>{e.label}</div>
+                <span className="px-2 py-0.5 rounded-md text-xs font-bold flex-shrink-0" style={{background:s.bg+"20",color:s.bg,border:`1px solid ${s.bg}33`}}>{e.division}</span>
+              </div>
+              {isOpen&&<div style={{color:C.sub,fontSize:12,marginTop:8,lineHeight:1.6}}>{e.detail}</div>}
+            </div>
+          </button>;
+        })}
+      </div>
+    </div>
+  </div>;
+}
+
 // ── PARENT VIEW ───────────────────────────────────────────────────────────────
 function ParentView({sb,session,profile,displayName,onShowOnboarding}){
   const[athlete,setAthlete]=useState(null);const[board,setBoard]=useState([]);const[feed,setFeed]=useState([]);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");
@@ -868,8 +982,10 @@ function ParentView({sb,session,profile,displayName,onShowOnboarding}){
     {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={feed}/>}
     {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={false} onSave={saveAthlete}/>}
     {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={false} onAdd={addSchool} onUpdate={updateSchool} onRemove={removeSchool}/>}
-    <div className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-2 px-4" style={{background:`${C.card}F8`,borderTop:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
-      {[{id:"dashboard",label:"Home",Ic:Home},{id:"athlete",label:"Athlete",Ic:UserIcon},{id:"schools",label:"Schools",Ic:School}].map(({id,label,Ic})=>{const active=tab===id;return<button key={id} onClick={()=>setTab(id)} className="flex flex-col items-center gap-1 px-8 py-2 rounded-xl" style={{color:active?C.fuchsia:C.muted,background:active?C.fuchsia+"18":"transparent",cursor:"pointer"}}><Ic size={20}/><span style={{fontSize:10,fontWeight:600}}>{label}</span></button>;})}
+    {tab==="compare"&&<CompareView athlete={athlete} board={board}/>}
+    {tab==="calendar"&&<CalendarView/>}
+    <div className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-1.5 px-2" style={{background:`${C.card}F8`,borderTop:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
+      {[{id:"dashboard",label:"Home",Ic:Home},{id:"athlete",label:"Athlete",Ic:UserIcon},{id:"schools",label:"Schools",Ic:School},{id:"compare",label:"Compare",Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>},{id:"calendar",label:"Calendar",Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}].map(({id,label,Ic})=>{const active=tab===id;return<button key={id} onClick={()=>setTab(id)} className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl" style={{color:active?C.fuchsia:C.muted,background:active?C.fuchsia+"18":"transparent",cursor:"pointer"}}><Ic size={18}/><span style={{fontSize:9,fontWeight:600}}>{label}</span></button>;})}
     </div>
   </>;
 }

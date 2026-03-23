@@ -6,6 +6,7 @@
   <title>Scholars Elite · Family Recruiting Portal</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -18,22 +19,48 @@
     ::-webkit-scrollbar-thumb{background:#2A1D45;border-radius:2px;}
     input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:#C233BF;cursor:ew-resize;box-shadow:0 0 6px #C233BF70;}
     @keyframes spin{to{transform:rotate(360deg);}}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
-    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
-    @keyframes popIn{0%{transform:scale(0.8);opacity:0;}70%{transform:scale(1.05);}100%{transform:scale(1);opacity:1;}}
-    .fade-up{animation:fadeUp 0.45s ease forwards;}
-    .pop-in{animation:popIn 0.4s ease forwards;}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
+    @keyframes popIn{0%{transform:scale(0.85);opacity:0;}70%{transform:scale(1.04);}100%{transform:scale(1);opacity:1;}}
+    .fade-up{animation:fadeUp 0.4s ease forwards;}
+    .pop-in{animation:popIn 0.35s ease forwards;}
+    .spinner{width:20px;height:20px;border:2px solid #2A1D45;border-top-color:#C233BF;border-radius:50%;animation:spin 0.7s linear infinite;}
   </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const {useState, useEffect, useRef} = React;
+const {useState,useEffect,useRef,useCallback}=React;
+
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const CFG_KEY      = "se-supabase-cfg-v2";
+const ONBOARD_KEY  = "se-onboarded-v2";
+const STAFF_CODE   = "SCHOLARS-STAFF-2026";
+
+// ── BRAND ─────────────────────────────────────────────────────────────────────
+const C={bg:"#09060F",card:"#120D1E",card2:"#1C1530",border:"#2A1D45",
+  primary:"#602F96",fuchsia:"#C233BF",red:"#DD1026",gold:"#F5A623",
+  green:"#22C55E",text:"#EDE8F8",sub:"#A898C8",muted:"#6B5E88"};
+
+// ── SCORING ───────────────────────────────────────────────────────────────────
+const WEIGHTS={bbLevel:2.5,opportunity:2.0,athletic:1.5,skill:1.5,academic:1.0,style:0.5,geo:0.5,relationship:0.5};
+const MAX_PTS={bbLevel:25,opportunity:20,athletic:15,skill:15,academic:10,style:5,geo:5,relationship:5};
+const FACTOR_LABELS={bbLevel:"BB Level Match",opportunity:"Opportunity / Role Fit",athletic:"Athletic / Physical Fit",skill:"Skill Fit",academic:"Academic Fit",style:"Style of Play Fit",geo:"Geographic / Family Fit",relationship:"Relationship Level"};
+const TIER_COLOR={T1:"#DD1026",T2:"#EA7316",T3:"#F5A623",T4:"#22C55E",T5:"#6B5E88",T6:"#4B5563"};
+const TIER_LABEL={T1:"Elite National",T2:"Major / P4",T3:"High Mid-Major",T4:"True Mid-Major",T5:"Low-Major D-I",T6:"Fringe D-I"};
+const PL_LABEL={PL1:"Elite HM",PL2:"P4 Caliber",PL3:"High Mid-Major",PL4:"True Mid-Major",PL5:"Low-Major",PL6:"D-II / Dev"};
+const PL_COLOR={PL1:"#DD1026",PL2:"#EA7316",PL3:"#F5A623",PL4:"#22C55E",PL5:"#6B5E88",PL6:"#4B5563"};
+const TIERS=["T1","T2","T3","T4","T5","T6"];
+const PLs=["PL1","PL2","PL3","PL4","PL5","PL6"];
+const SCHOOL_DB=[{school:"UConn",conference:"Big East",tier:"T1"},{school:"South Carolina",conference:"SEC",tier:"T1"},{school:"LSU",conference:"SEC",tier:"T1"},{school:"Tennessee",conference:"SEC",tier:"T1"},{school:"Notre Dame",conference:"ACC",tier:"T1"},{school:"Iowa",conference:"Big Ten",tier:"T1"},{school:"Oregon",conference:"Big Ten",tier:"T2"},{school:"Maryland",conference:"Big Ten",tier:"T2"},{school:"Florida State",conference:"ACC",tier:"T2"},{school:"Michigan",conference:"Big Ten",tier:"T2"},{school:"Ole Miss",conference:"SEC",tier:"T2"},{school:"Arizona",conference:"Big 12",tier:"T2"},{school:"James Madison",conference:"Sun Belt",tier:"T3"},{school:"FGCU",conference:"ASUN",tier:"T3"},{school:"Gonzaga",conference:"WCC",tier:"T3"},{school:"Drake",conference:"MVC",tier:"T3"},{school:"Belmont",conference:"MVC",tier:"T3"},{school:"High Point",conference:"Big South",tier:"T3"},{school:"Campbell",conference:"Big South",tier:"T4"},{school:"Jacksonville",conference:"ASUN",tier:"T4"},{school:"North Florida",conference:"ASUN",tier:"T4"},{school:"Stetson",conference:"ASUN",tier:"T4"}];
+
+function calcScore(f={}){return Math.min(100,Math.round(Object.keys(WEIGHTS).reduce((s,k)=>s+(f[k]||0)*WEIGHTS[k],0)));}
+function getBand(score){if(score>=90)return{band:"A1",color:"#16A34A"};if(score>=80)return{band:"A2",color:"#22C55E"};if(score>=70)return{band:"B1",color:"#F5A623"};if(score>=60)return{band:"B2",color:"#EA7316"};if(score>=50)return{band:"C",color:"#6B5E88"};return{band:"D",color:"#DD1026"};}
+function getRecruit(plNum,tNum,score){const gap=tNum-plNum;if(gap<=-2)return"Dream";if(gap===-1)return"Reach";if(gap===0)return score>=80?"Strong Fit":"Target";if(gap===1)return score>=75?"Target":"Stretch";return"Likely Landing";}
 
 // ── ICONS ─────────────────────────────────────────────────────────────────────
+const Ic=(d,opts={})=>({size=16,color="currentColor",...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>{opts.extra}{Array.isArray(d)?d.map((x,i)=>React.cloneElement(x,{key:i})):<path d={d}/>}</svg>;
 const Trophy=({size=16,color="currentColor",...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
 const LogOut=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
-const Target=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
 const Plus=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
 const Edit3=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
 const X=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
@@ -45,7 +72,6 @@ const ArrowRight=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width
 const Trash2=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
 const ChevronRight=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="9 18 15 12 9 6"/></svg>;
 const Home=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
-const Users=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
 const Lock=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
 const Eye=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 const EyeOff=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
@@ -54,396 +80,919 @@ const Check=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={siz
 const BarChart3=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>;
 const Zap=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
 const UserIcon=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
-const Sparkles=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>;
-const Bell=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
-
-// ── BRAND & SCORING ───────────────────────────────────────────────────────────
-const C={bg:"#09060F",card:"#120D1E",card2:"#1C1530",border:"#2A1D45",primary:"#602F96",fuchsia:"#C233BF",red:"#DD1026",gold:"#F5A623",green:"#22C55E",text:"#EDE8F8",sub:"#A898C8",muted:"#6B5E88"};
-const WEIGHTS={bbLevel:2.5,opportunity:2.0,athletic:1.5,skill:1.5,academic:1.0,style:0.5,geo:0.5,relationship:0.5};
-const MAX_PTS={bbLevel:25,opportunity:20,athletic:15,skill:15,academic:10,style:5,geo:5,relationship:5};
-const FACTOR_LABELS={bbLevel:"BB Level Match",opportunity:"Opportunity / Role Fit",athletic:"Athletic / Physical Fit",skill:"Skill Fit",academic:"Academic Fit",style:"Style of Play Fit",geo:"Geographic / Family Fit",relationship:"Relationship Level"};
-const TIER_COLOR={T1:"#DD1026",T2:"#EA7316",T3:"#F5A623",T4:"#22C55E",T5:"#6B5E88",T6:"#4B5563"};
-const TIER_LABEL={T1:"Elite National",T2:"Major / P4",T3:"High Mid-Major",T4:"True Mid-Major",T5:"Low-Major D-I",T6:"Fringe D-I"};
-const PL_LABEL={PL1:"Elite HM",PL2:"P4 Caliber",PL3:"High Mid-Major",PL4:"True Mid-Major",PL5:"Low-Major",PL6:"D-II / Dev"};
-const PL_COLOR={PL1:"#DD1026",PL2:"#EA7316",PL3:"#F5A623",PL4:"#22C55E",PL5:"#6B5E88",PL6:"#4B5563"};
-const TIERS=["T1","T2","T3","T4","T5","T6"];
-const PLs=["PL1","PL2","PL3","PL4","PL5","PL6"];
-
-function calcScore(f={}){return Math.min(100,Math.round(Object.keys(WEIGHTS).reduce((s,k)=>s+(f[k]||0)*WEIGHTS[k],0)));}
-function getBand(score){if(score>=90)return{band:"A1",color:"#16A34A"};if(score>=80)return{band:"A2",color:"#22C55E"};if(score>=70)return{band:"B1",color:"#F5A623"};if(score>=60)return{band:"B2",color:"#EA7316"};if(score>=50)return{band:"C",color:"#6B5E88"};return{band:"D",color:"#DD1026"};}
-function getRecruit(plNum,tNum,score){const gap=tNum-plNum;if(gap<=-2)return"Dream";if(gap===-1)return"Reach";if(gap===0)return score>=80?"Strong Fit":"Target";if(gap===1)return score>=75?"Target":"Stretch";return"Likely Landing";}
-
-// ── DEMO DATA ─────────────────────────────────────────────────────────────────
-const DEMO_USERS={"parent.london@scholars.com":{pass:"london2026",role:"parent",athleteId:"ava-london",name:"London Family",firstName:"Sarah"},"parent.ahmad@scholars.com":{pass:"ahmad2026",role:"parent",athleteId:"kassidy-ahmad",name:"Ahmad Family",firstName:"David"},"parent.russell@scholars.com":{pass:"russell2026",role:"parent",athleteId:"nasiaah-russell",name:"Russell Family",firstName:"Lisa"},"staff@scholars.com":{pass:"staff2026",role:"staff",name:"Sal Racobaldo",firstName:"Sal"}};
-const SEED_ATHLETES={"ava-london":{id:"ava-london",name:"Ava London",gradYear:"2026",position:"Wing",height:"6'0\"",archetype:"Two-way wing / Stretch forward",gpa:"3.4",playerLevel:"PL2",strengths:"Length, versatility, shooting range",developmentNeeds:"Physicality at the rim, defensive intensity",recruitingStory:"Legit HM frame with developing skillset. P4 ceiling if she takes the next step.",offers:[],highlightLink:"",visibilityScore:8},"kassidy-ahmad":{id:"kassidy-ahmad",name:"Kassidy Ahmad",gradYear:"2026",position:"Guard",height:"5'8\"",archetype:"Lead guard / Shot-maker",gpa:"3.6",playerLevel:"PL3",strengths:"Ball handling, court vision, pull-up J",developmentNeeds:"Finishing through contact, off-ball movement",recruitingStory:"High-academic profile with on-court playmaking upside. Mid-major plus ceiling.",offers:[],highlightLink:"",visibilityScore:7},"nasiaah-russell":{id:"nasiaah-russell",name:"Nasiaah Russell",gradYear:"2026",position:"Guard",height:"5'6\"",archetype:"Combo guard / Switchable defender",gpa:"3.8",playerLevel:"PL3",strengths:"IQ, defense, shot discipline",developmentNeeds:"Explosiveness, shot creation off dribble",recruitingStory:"Academic-priority recruit. T3 with high academic value is the ideal window.",offers:[],highlightLink:"",visibilityScore:6},"maya-thompson":{id:"maya-thompson",name:"Maya Thompson",gradYear:"2026",position:"Guard",height:"5'5\"",archetype:"Lead guard / High IQ",gpa:"3.5",playerLevel:"PL4",strengths:"Passing, floor management, locker room",developmentNeeds:"Athleticism, first step",recruitingStory:"Elite IQ player. True mid-major fit. Great culture add.",offers:[],highlightLink:"",visibilityScore:5},"raegan-wb":{id:"raegan-wb",name:"Raegan Wells-Bradley",gradYear:"2027",position:"Forward",height:"6'1\"",archetype:"Stretch forward / Rim runner",gpa:"3.2",playerLevel:"PL2",strengths:"Motor, positioning, versatility",developmentNeeds:"Perimeter shooting consistency",recruitingStory:"Long-term upside play. Strong P4 ceiling if development hits.",offers:[],highlightLink:"",visibilityScore:7},"jordyn-pierce":{id:"jordyn-pierce",name:"Jordyn Pierce",gradYear:"2027",position:"Wing",height:"5'10\"",archetype:"Athletic / Late bloomer",gpa:"3.1",playerLevel:"PL3",strengths:"Athleticism, upside, energy",developmentNeeds:"Skill refinement, shooting mechanics",recruitingStory:"High-ceiling prospect. Needs 18 months to unlock.",offers:[],highlightLink:"",visibilityScore:6},"taylor-brooks":{id:"taylor-brooks",name:"Taylor Brooks",gradYear:"2026",position:"Post",height:"6'2\"",archetype:"Undersized post / Rim runner",gpa:"3.3",playerLevel:"PL4",strengths:"Interior presence, rebounding, energy",developmentNeeds:"Facing up, post footwork",recruitingStory:"True mid-major post. Build active boards at T4 programs.",offers:[],highlightLink:"",visibilityScore:5}};
-const SEED_BOARDS={"ava-london":[{id:"jmu-al",school:"James Madison",conference:"Sun Belt",tier:"T3",factors:{bbLevel:9,opportunity:9,athletic:8,skill:8,academic:9,style:8,geo:7,relationship:7},notes:"Best current landing window — mutual interest building.",lastContact:"2026-03-10",hasOffer:false},{id:"fsu-al",school:"Florida State",conference:"ACC",tier:"T2",factors:{bbLevel:8,opportunity:8,athletic:8,skill:7,academic:8,style:7,geo:9,relationship:6},notes:"Frame + academics fit. No offer yet.",lastContact:"2026-03-05",hasOffer:false},{id:"oregon-al",school:"Oregon",conference:"Big Ten",tier:"T2",factors:{bbLevel:8,opportunity:7,athletic:8,skill:7,academic:6,style:6,geo:4,relationship:4},notes:"Pacific NW geo gap. Strong bb fit.",lastContact:"",hasOffer:false}],"kassidy-ahmad":[{id:"jmu-ka",school:"James Madison",conference:"Sun Belt",tier:"T3",factors:{bbLevel:8,opportunity:8,athletic:7,skill:7,academic:9,style:8,geo:7,relationship:6},notes:"Academic + bb fit ideal.",lastContact:"2026-03-05",hasOffer:false},{id:"fgcu-ka",school:"FGCU",conference:"ASUN",tier:"T3",factors:{bbLevel:8,opportunity:8,athletic:7,skill:7,academic:7,style:7,geo:9,relationship:5},notes:"Strong Florida fit.",lastContact:"",hasOffer:false},{id:"campbell-ka",school:"Campbell",conference:"Big South",tier:"T4",factors:{bbLevel:7,opportunity:8,athletic:7,skill:7,academic:7,style:7,geo:7,relationship:5},notes:"Fallback — real fit.",lastContact:"",hasOffer:false}],"nasiaah-russell":[{id:"jmu-nr",school:"James Madison",conference:"Sun Belt",tier:"T3",factors:{bbLevel:8,opportunity:7,athletic:6,skill:7,academic:10,style:8,geo:7,relationship:6},notes:"Academic priority — JMU is the bullseye.",lastContact:"2026-03-08",hasOffer:false},{id:"belmont-nr",school:"Belmont",conference:"MVC",tier:"T3",factors:{bbLevel:7,opportunity:7,athletic:6,skill:7,academic:9,style:7,geo:6,relationship:5},notes:"Academic fit strong.",lastContact:"",hasOffer:false}],"maya-thompson":[{id:"fgcu-mt",school:"FGCU",conference:"ASUN",tier:"T3",factors:{bbLevel:7,opportunity:8,athletic:5,skill:7,academic:7,style:7,geo:9,relationship:5},notes:"IQ and culture fit strong.",lastContact:"",hasOffer:false},{id:"jax-mt",school:"Jacksonville",conference:"ASUN",tier:"T4",factors:{bbLevel:8,opportunity:8,athletic:5,skill:7,academic:7,style:7,geo:9,relationship:5},notes:"Best current landing spot.",lastContact:"",hasOffer:false}],"raegan-wb":[{id:"fsu-rwb",school:"Florida State",conference:"ACC",tier:"T2",factors:{bbLevel:8,opportunity:8,athletic:8,skill:7,academic:7,style:7,geo:9,relationship:5},notes:"2027 class — build early.",lastContact:"",hasOffer:false}],"jordyn-pierce":[],"taylor-brooks":[{id:"jax-tb",school:"Jacksonville",conference:"ASUN",tier:"T4",factors:{bbLevel:8,opportunity:8,athletic:7,skill:7,academic:7,style:7,geo:9,relationship:6},notes:"Top priority landing.",lastContact:"",hasOffer:false}]};
-const SEED_FEED={"ava-london":[{id:"f1",message:"Staff added James Madison to board (Score: 86/100)",created_at:"2026-03-10T14:00:00Z"},{id:"f2",message:"Staff added Florida State to board (Score: 79/100)",created_at:"2026-03-05T09:00:00Z"},{id:"f3",message:"Player level set to PL2 by staff",created_at:"2026-02-20T11:00:00Z"}],"kassidy-ahmad":[{id:"f4",message:"Staff added James Madison to board (Score: 81/100)",created_at:"2026-03-05T10:00:00Z"}],"nasiaah-russell":[{id:"f6",message:"Staff added James Madison to board (Score: 82/100)",created_at:"2026-03-08T12:00:00Z"}]};
-const SCHOOL_DB=[{school:"UConn",conference:"Big East",tier:"T1"},{school:"South Carolina",conference:"SEC",tier:"T1"},{school:"LSU",conference:"SEC",tier:"T1"},{school:"Tennessee",conference:"SEC",tier:"T1"},{school:"Notre Dame",conference:"ACC",tier:"T1"},{school:"Iowa",conference:"Big Ten",tier:"T1"},{school:"Oregon",conference:"Big Ten",tier:"T2"},{school:"Maryland",conference:"Big Ten",tier:"T2"},{school:"Florida State",conference:"ACC",tier:"T2"},{school:"Michigan",conference:"Big Ten",tier:"T2"},{school:"Ole Miss",conference:"SEC",tier:"T2"},{school:"Arizona",conference:"Big 12",tier:"T2"},{school:"James Madison",conference:"Sun Belt",tier:"T3"},{school:"FGCU",conference:"ASUN",tier:"T3"},{school:"Gonzaga",conference:"WCC",tier:"T3"},{school:"Drake",conference:"MVC",tier:"T3"},{school:"Belmont",conference:"MVC",tier:"T3"},{school:"High Point",conference:"Big South",tier:"T3"},{school:"Campbell",conference:"Big South",tier:"T4"},{school:"Jacksonville",conference:"ASUN",tier:"T4"},{school:"North Florida",conference:"ASUN",tier:"T4"},{school:"Stetson",conference:"ASUN",tier:"T4"}];
+const Database=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
+const RefreshCw=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
+const Activity=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
 
 // ── UI ATOMS ──────────────────────────────────────────────────────────────────
 function Badge({color,children}){return<span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold" style={{background:color+"22",color,border:`1px solid ${color}44`}}>{children}</span>;}
 function TierBadge({tier}){return<Badge color={TIER_COLOR[tier]}>{tier}·{TIER_LABEL[tier]}</Badge>;}
 function PLBadge({level}){return<Badge color={PL_COLOR[level]}>{level}·{PL_LABEL[level]}</Badge>;}
 function ScorePill({score}){const{band,color}=getBand(score);return<span className="inline-flex items-center gap-1.5 rounded-full text-xs px-2.5 py-0.5 font-bold" style={{background:color+"22",color,border:`1px solid ${color}44`}}>{band}·{score}</span>;}
-function ScoreRing({score,size=68}){const{color}=getBand(score);const r=size/2-5,circ=2*Math.PI*r,dash=circ*(score/100);return<div className="relative flex-shrink-0" style={{width:size,height:size}}><svg width={size} height={size} style={{transform:"rotate(-90deg)"}}><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={4}/><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={4} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transition:"stroke-dasharray 0.5s ease"}}/></svg><div className="absolute inset-0 flex items-center justify-center"><span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:size/3.5,fontWeight:800,color,lineHeight:1}}>{score}</span></div></div>;}
-function FitSlider({label,maxPts,value=0,onChange}){const col=value>=8?C.green:value>=6?C.gold:value>=4?"#EA7316":C.red;return<div className="mb-3"><div className="flex items-center justify-between mb-1"><span style={{color:C.sub,fontSize:11,fontWeight:600}}>{label}</span><div className="flex items-center gap-2"><span style={{color:C.muted,fontSize:9}}>/{maxPts}pts</span><div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style={{background:col+"22",color:col,border:`1px solid ${col}44`}}>{value}</div></div></div><div className="relative h-1.5 rounded-full" style={{background:C.border}}><div className="absolute left-0 top-0 h-full rounded-full transition-all" style={{width:`${value*10}%`,background:`linear-gradient(90deg,${C.primary},${col})`}}/><input type="range" min="0" max="10" value={value} onChange={e=>onChange(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0" style={{cursor:"ew-resize"}}/></div></div>;}
+function Spinner({size=18}){return<div className="spinner" style={{width:size,height:size}}/>;}
 
-// ── ONBOARDING FLOW ───────────────────────────────────────────────────────────
-function OnboardingFlow({user, athlete, board, onComplete}) {
-  const [step, setStep] = useState(0);
-  const [animKey, setAnimKey] = useState(0);
-  const topSchool = [...(board||[])].map(s=>({...s,score:calcScore(s.factors)})).sort((a,b)=>b.score-a.score)[0];
-
-  const next = () => {
-    setAnimKey(k=>k+1);
-    if (step < 3) setStep(s=>s+1);
-    else onComplete();
-  };
-
-  const STEPS = [
-    {
-      emoji:"👋",
-      title:`Welcome, ${user.firstName}`,
-      subtitle:`You now have access to ${athlete.name}'s official recruiting portal. Everything your coaching staff does — you'll see here in real time.`,
-      cta:"Let's get started →",
-      extra: null
-    },
-    {
-      emoji:"📊",
-      title:"How placement scores work",
-      subtitle:`Every school on ${athlete.name}'s board gets a score from 0–100. It's calculated across 8 factors — basketball fit, opportunity, academics, geography, and more.`,
-      cta:"Got it →",
-      extra: "bands"
-    },
-    {
-      emoji:"🏫",
-      title: topSchool ? `Your top fit: ${topSchool.school}` : "Your board is ready",
-      subtitle: topSchool
-        ? `Staff has ${athlete.name}'s board set up with ${board.length} school${board.length!==1?"s":""} already. ${topSchool.school} is the current top placement fit.`
-        : `Staff has set up ${athlete.name}'s profile. Head to the Schools tab to start building your board.`,
-      cta:"See the breakdown →",
-      extra: topSchool ? "school" : null
-    },
-    {
-      emoji:"🔔",
-      title:"You're all set",
-      subtitle:"You'll see updates here every time staff adds a school, changes a score, or logs an offer. The board is live — let's go.",
-      cta:`Open ${athlete.name}'s portal →`,
-      extra: "checklist"
-    },
-  ];
-
-  const s = STEPS[step];
-  const pct = Math.round((step / 3) * 100);
-
-  return (
-    <div className="min-h-screen flex flex-col" style={{background:C.bg}}>
-      {/* Top progress bar */}
-      <div className="h-1 w-full" style={{background:C.border}}>
-        <div className="h-full transition-all duration-500" style={{width:`${pct+(step===3?33:0)}%`,background:`linear-gradient(90deg,${C.primary},${C.fuchsia})`}}/>
-      </div>
-
-      <div style={{maxWidth:480,margin:"0 auto",padding:"32px 20px 40px",flex:1,display:"flex",flexDirection:"column"}}>
-
-        {/* Step indicators */}
-        <div className="flex items-center justify-center gap-2 mb-10">
-          {[0,1,2,3].map(i=>(
-            <div key={i} className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300"
-                style={{background:i<step?C.green:i===step?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.card2,
-                  color:i<=step?"white":C.muted,
-                  border:`1px solid ${i<step?C.green:i===step?C.primary:C.border}`,
-                  transform:i===step?"scale(1.15)":"scale(1)"}}>
-                {i<step?<Check size={12}/>:i+1}
-              </div>
-              {i<3&&<div className="w-6 h-0.5 rounded-full transition-all duration-500" style={{background:i<step?C.green:C.border}}/>}
-            </div>
-          ))}
-        </div>
-
-        {/* Main card */}
-        <div key={animKey} className="fade-up flex-1 flex flex-col">
-
-          {/* Hero */}
-          <div className="rounded-2xl p-8 mb-5 text-center relative overflow-hidden"
-            style={{background:`linear-gradient(135deg,${C.primary}85,${C.fuchsia}45)`,border:`1px solid ${C.primary}60`}}>
-            <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)",backgroundSize:"12px 12px"}}/>
-            <div className="relative">
-              <div className="text-5xl mb-4" style={{animation:"popIn 0.4s ease"}}>{s.emoji}</div>
-              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:"white",lineHeight:1.15,marginBottom:12}}>{s.title}</div>
-              <div style={{color:"rgba(255,255,255,0.72)",fontSize:14,lineHeight:1.65}}>{s.subtitle}</div>
-            </div>
-          </div>
-
-          {/* Extra content per step */}
-          {s.extra === "bands" && (
-            <div className="rounded-2xl p-5 mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
-              <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Score Bands</div>
-              <div className="flex flex-col gap-2">
-                {[{band:"A1",range:"90–100",label:"Priority Push",color:"#16A34A",desc:"Staff should be actively building this relationship now"},
-                  {band:"A2",range:"80–89",label:"Strong Target",color:"#22C55E",desc:"Realistic fit — activate outreach"},
-                  {band:"B1",range:"70–79",label:"Real Fit",color:"#F5A623",desc:"Keep warm, monitor closely"},
-                  {band:"B2",range:"60–69",label:"Situational",color:"#EA7316",desc:"Only if mutual traction develops"},
-                  {band:"C–D",range:"Below 60",label:"Low Priority",color:"#6B5E88",desc:"Not an active placement target"}
-                ].map(b=>(
-                  <div key={b.band} className="flex items-center gap-3 p-3 rounded-xl" style={{background:b.color+"12",border:`1px solid ${b.color}22`}}>
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0" style={{background:b.color+"25",color:b.color,border:`1px solid ${b.color}44`}}>{b.band}</div>
-                    <div className="flex-1 min-w-0">
-                      <div style={{color:C.text,fontSize:13,fontWeight:700}}>{b.label} <span style={{color:b.color}}>{b.range}</span></div>
-                      <div style={{color:C.muted,fontSize:11,marginTop:1}}>{b.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {s.extra === "school" && topSchool && (
-            <div className="rounded-2xl overflow-hidden mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
-              <div className="p-5">
-                <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Top Placement Fit</div>
-                <div className="flex items-center gap-4">
-                  <ScoreRing score={topSchool.score} size={72}/>
-                  <div className="flex-1">
-                    <div style={{fontFamily:"'Barlow Condensed',sans-serif",color:C.text,fontSize:22,fontWeight:800,lineHeight:1}}>{topSchool.school}</div>
-                    <div style={{color:C.muted,fontSize:13,marginTop:2,marginBottom:8}}>{topSchool.conference}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <TierBadge tier={topSchool.tier}/>
-                      <Badge color={getBand(topSchool.score).color}>{getRecruit(parseInt(athlete.playerLevel.replace("PL","")),parseInt(topSchool.tier.replace("T","")),topSchool.score)}</Badge>
-                    </div>
-                  </div>
-                </div>
-                {topSchool.notes && (
-                  <div className="mt-4 p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
-                    <div style={{color:C.muted,fontSize:10,fontWeight:700,marginBottom:4}}>STAFF NOTE</div>
-                    <div style={{color:C.sub,fontSize:12,lineHeight:1.5}}>{topSchool.notes}</div>
-                  </div>
-                )}
-              </div>
-              {/* Mini factor bars */}
-              <div className="px-5 pb-4">
-                <div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Factor Breakdown</div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  {Object.entries(topSchool.factors).slice(0,6).map(([k,v])=>{
-                    const c=v>=8?C.green:v>=6?C.gold:v>=4?"#EA7316":C.red;
-                    return<div key={k}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span style={{color:C.muted,fontSize:9,fontWeight:600}}>{FACTOR_LABELS[k].split(" ")[0]}</span>
-                        <span style={{color:c,fontSize:9,fontWeight:700}}>{v}/10</span>
-                      </div>
-                      <div className="h-1 rounded-full" style={{background:C.border}}>
-                        <div style={{width:`${v*10}%`,height:"100%",borderRadius:9999,background:c,transition:"width 0.4s"}}/>
-                      </div>
-                    </div>;
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {s.extra === "checklist" && (
-            <div className="rounded-2xl p-5 mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
-              <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>What you can do</div>
-              {[
-                {icon:"👀",label:"View your athlete's placement board",sub:"See every school, score, and fit rating"},
-                {icon:"✏️",label:"Update athlete info",sub:"GPA, film link, offers received"},
-                {icon:"🏫",label:"Add schools to the board",sub:"Rate fit factors, see scores update live"},
-                {icon:"🔔",label:"Get notified on staff moves",sub:"Offer logged, level change, new school added"},
-              ].map((item,i)=>(
-                <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
-                  <div className="text-xl flex-shrink-0 mt-0.5">{item.icon}</div>
-                  <div>
-                    <div style={{color:C.text,fontSize:13,fontWeight:700}}>{item.label}</div>
-                    <div style={{color:C.muted,fontSize:11,marginTop:1}}>{item.sub}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* CTA */}
-          <button onClick={next}
-            className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 mt-auto"
-            style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer",boxShadow:`0 8px 30px ${C.primary}50`}}>
-            {s.cta} <ArrowRight size={16}/>
-          </button>
-
-          {step > 0 && (
-            <button onClick={()=>{setAnimKey(k=>k+1);setStep(s=>s-1);}}
-              className="w-full py-2 mt-3 text-sm font-bold"
-              style={{color:C.muted,cursor:"pointer"}}>
-              ← Back
-            </button>
-          )}
-
-          {step === 0 && (
-            <button onClick={onComplete}
-              className="w-full py-2 mt-3 text-sm"
-              style={{color:C.muted,cursor:"pointer"}}>
-              Skip intro
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+function Alert({type="error",children}){
+  const col=type==="error"?C.red:type==="success"?C.green:C.gold;
+  return<div className="flex items-start gap-2 p-3 rounded-xl mb-4 text-sm" style={{background:col+"15",border:`1px solid ${col}33`,color:col}}>
+    <AlertCircle size={14} style={{flexShrink:0,marginTop:1}}/>{children}
+  </div>;
 }
 
-// ── LOGIN ─────────────────────────────────────────────────────────────────────
-function LoginScreen({onLogin}){
-  const[email,setEmail]=useState("");const[pass,setPass]=useState("");const[show,setShow]=useState(false);const[err,setErr]=useState("");const[loading,setLoading]=useState(false);
-  const demos=[{label:"Ava London's Family",sub:"parent.london@scholars.com",pass:"london2026"},{label:"Kassidy Ahmad's Family",sub:"parent.ahmad@scholars.com",pass:"ahmad2026"},{label:"Nasiaah Russell's Family",sub:"parent.russell@scholars.com",pass:"russell2026"},{label:"Staff — Sal Racobaldo",sub:"staff@scholars.com",pass:"staff2026",isStaff:true}];
-  const attempt=async(em,pw)=>{setLoading(true);setErr("");await new Promise(r=>setTimeout(r,380));const u=DEMO_USERS[(em||email).toLowerCase()];if(u&&u.pass===(pw||pass)){onLogin({...u,email:em||email});}else setErr("Invalid credentials.");setLoading(false);};
-  return<div className="min-h-screen flex flex-col items-center justify-center p-5" style={{background:`radial-gradient(ellipse 80% 55% at 50% 0%,${C.primary}35,${C.bg} 68%)`,backgroundColor:C.bg}}>
-    <div className="mb-8 text-center"><div className="inline-flex w-16 h-16 rounded-2xl items-center justify-center mb-4" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,boxShadow:`0 0 48px ${C.fuchsia}40`}}><Trophy size={30} color="white"/></div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:C.text,letterSpacing:2}}>SCHOLARS ELITE</div><div style={{fontSize:11,color:C.muted,letterSpacing:3,textTransform:"uppercase",marginTop:2}}>Family Recruiting Portal</div></div>
-    <div className="w-full max-w-sm rounded-2xl p-6" style={{background:C.card,border:`1px solid ${C.border}`}}>
-      <div style={{color:C.text,fontSize:17,fontWeight:700,marginBottom:3}}>Welcome back</div>
-      <div style={{color:C.muted,fontSize:12,marginBottom:18}}>Sign in to access your athlete's board</div>
-      {err&&<div className="flex items-center gap-2 p-3 rounded-xl mb-4 text-xs" style={{background:C.red+"18",border:`1px solid ${C.red}33`,color:C.red}}><AlertCircle size={13}/>{err}</div>}
-      <div className="mb-4"><label style={{color:C.muted,fontSize:10,fontWeight:700,letterSpacing:1,display:"block",marginBottom:5}}>EMAIL</label><input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="your@email.com" className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/></div>
-      <div className="mb-5"><label style={{color:C.muted,fontSize:10,fontWeight:700,letterSpacing:1,display:"block",marginBottom:5}}>PASSWORD</label><div className="relative"><input value={pass} onChange={e=>setPass(e.target.value)} type={show?"text":"password"} placeholder="••••••••" className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit",paddingRight:40}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{color:C.muted,cursor:"pointer"}}>{show?<EyeOff size={15}/>:<Eye size={15}/>}</button></div></div>
-      <button onClick={()=>attempt()} disabled={loading} className="w-full py-3 rounded-xl font-bold text-sm" style={{background:loading?C.primary+"70":`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:loading?"wait":"pointer"}}>{loading?"Signing in…":"Sign In →"}</button>
+function ScoreRing({score,size=68}){
+  const{color}=getBand(score);const r=size/2-5,circ=2*Math.PI*r,dash=circ*(score/100);
+  return<div className="relative flex-shrink-0" style={{width:size,height:size}}>
+    <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={4}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={4} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transition:"stroke-dasharray 0.5s ease"}}/>
+    </svg>
+    <div className="absolute inset-0 flex items-center justify-center">
+      <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:size/3.5,fontWeight:800,color,lineHeight:1}}>{score}</span>
     </div>
-    <div className="w-full max-w-sm mt-5"><div style={{color:C.muted,fontSize:10,textAlign:"center",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Demo Accounts — Click to Sign In</div>
-      {demos.map(d=><button key={d.sub} onClick={()=>attempt(d.sub,d.pass)} className="w-full flex items-center justify-between px-4 py-3 rounded-xl mb-2 text-left transition-all" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}><div><div style={{color:C.text,fontSize:13,fontWeight:600}}>{d.label}</div><div style={{color:C.muted,fontSize:11}}>{d.sub}</div></div>{d.isStaff?<Badge color={C.fuchsia}>Staff</Badge>:<ChevronRight size={14} style={{color:C.muted}}/>}</button>)}
+  </div>;
+}
+
+function FitSlider({label,maxPts,value=0,onChange}){
+  const col=value>=8?C.green:value>=6?C.gold:value>=4?"#EA7316":C.red;
+  return<div className="mb-3">
+    <div className="flex items-center justify-between mb-1">
+      <span style={{color:C.sub,fontSize:11,fontWeight:600}}>{label}</span>
+      <div className="flex items-center gap-2">
+        <span style={{color:C.muted,fontSize:9}}>/{maxPts}pts</span>
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style={{background:col+"22",color:col,border:`1px solid ${col}44`}}>{value}</div>
+      </div>
+    </div>
+    <div className="relative h-1.5 rounded-full" style={{background:C.border}}>
+      <div className="absolute left-0 top-0 h-full rounded-full transition-all" style={{width:`${value*10}%`,background:`linear-gradient(90deg,${C.primary},${col})`}}/>
+      <input type="range" min="0" max="10" value={value} onChange={e=>onChange(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0" style={{cursor:"ew-resize"}}/>
+    </div>
+  </div>;
+}
+
+function FieldInput({label,value,onChange,type="text",placeholder="",hint=""}){
+  const[focus,setFocus]=useState(false);
+  return<div className="mb-4">
+    <label style={{color:C.muted,fontSize:10,fontWeight:700,letterSpacing:1,display:"block",marginBottom:5}}>{label}</label>
+    <input value={value} onChange={e=>onChange(e.target.value)} type={type} placeholder={placeholder}
+      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+      style={{background:C.card2,border:`1px solid ${focus?C.primary:C.border}`,color:C.text,fontFamily:"inherit"}}
+      onFocus={()=>setFocus(true)} onBlur={()=>setFocus(false)}/>
+    {hint&&<div style={{color:C.muted,fontSize:10,marginTop:4}}>{hint}</div>}
+  </div>;
+}
+
+// ── SUPABASE SETUP SCREEN ─────────────────────────────────────────────────────
+function SetupScreen({onSave}){
+  const[url,setUrl]=useState("");const[key,setKey]=useState("");
+  const[err,setErr]=useState("");const[testing,setTesting]=useState(false);
+
+  const connect=async()=>{
+    if(!url.trim()||!key.trim()){setErr("Both fields are required.");return;}
+    setTesting(true);setErr("");
+    try{
+      const sb=window.supabase.createClient(url.trim(),key.trim());
+      const{error}=await sb.from("profiles").select("id").limit(1);
+      if(error&&!error.message.includes("no rows")&&error.code!=="PGRST116"){
+        setErr("Connection failed: "+error.message+". Check your URL and key, and make sure you ran the SQL schema.");
+      } else {
+        onSave(url.trim(),key.trim());
+      }
+    }catch(e){setErr("Connection error: "+e.message);}
+    setTesting(false);
+  };
+
+  return<div className="min-h-screen flex flex-col items-center justify-center p-5"
+    style={{background:`radial-gradient(ellipse 70% 50% at 50% 0%,${C.primary}30,${C.bg} 70%)`,backgroundColor:C.bg}}>
+    <div className="inline-flex w-14 h-14 rounded-2xl items-center justify-center mb-5"
+      style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,boxShadow:`0 0 40px ${C.fuchsia}35`}}>
+      <Database size={24} color="white"/>
+    </div>
+    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:C.text,letterSpacing:2,marginBottom:4}}>CONNECT SUPABASE</div>
+    <div style={{color:C.muted,fontSize:12,marginBottom:24,textAlign:"center"}}>Paste your credentials from supabase.com → Project Settings → API</div>
+
+    <div className="w-full max-w-sm rounded-2xl p-6 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      {err&&<Alert type="error">{err}</Alert>}
+      <FieldInput label="PROJECT URL" value={url} onChange={setUrl} placeholder="https://xxxx.supabase.co"/>
+      <FieldInput label="ANON / PUBLIC KEY" value={key} onChange={setKey} placeholder="eyJhbGciOi…"/>
+      <button onClick={connect} disabled={testing||!url||!key}
+        className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+        style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:testing?"wait":"pointer",opacity:(!url||!key)?0.6:1}}>
+        {testing?<><Spinner size={14}/>Testing connection…</>:"Connect & Continue →"}
+      </button>
+    </div>
+
+    <div className="w-full max-w-sm p-4 rounded-xl" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Quick Setup</div>
+      {["1. Create project at supabase.com (free)","2. Paste schema SQL into SQL Editor and run","3. Go to Settings → API and copy credentials","4. Paste both values above and connect"].map((s,i)=>(
+        <div key={i} className="flex items-start gap-2 mb-2 last:mb-0">
+          <div className="w-4 h-4 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5"
+            style={{background:C.primary+"30",color:C.primary,fontSize:9}}>{i+1}</div>
+          <div style={{color:C.sub,fontSize:12}}>{s}</div>
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+// ── AUTH SCREEN ───────────────────────────────────────────────────────────────
+function AuthScreen({sb}){
+  const[mode,setMode]=useState("login");
+  const[email,setEmail]=useState("");const[pass,setPass]=useState("");
+  const[name,setName]=useState("");const[code,setCode]=useState("");
+  const[show,setShow]=useState(false);const[err,setErr]=useState("");
+  const[msg,setMsg]=useState("");const[loading,setLoading]=useState(false);
+
+  const go=async()=>{
+    setLoading(true);setErr("");setMsg("");
+    try{
+      if(mode==="login"){
+        const{error}=await sb.auth.signInWithPassword({email,password:pass});
+        if(error)setErr(error.message);
+      } else if(mode==="signup"){
+        const isStaff=code.trim().toUpperCase()===STAFF_CODE;
+        let athleteId=null;
+        if(!isStaff){
+          if(!code.trim()){setErr("Enter your athlete's access code.");setLoading(false);return;}
+          const{data,error}=await sb.rpc("get_athlete_by_code",{code:code.trim()});
+          if(error||!data||data.length===0){setErr("Access code not recognised. Check with your coaching staff.");setLoading(false);return;}
+          athleteId=data[0].id;
+        }
+        const{data,error}=await sb.auth.signUp({email,password:pass,options:{data:{display_name:name||email,role:isStaff?"staff":"parent"}}});
+        if(error){setErr(error.message);setLoading(false);return;}
+        if(data.user&&athleteId){
+          await sb.from("profiles").update({athlete_id:athleteId,display_name:name||email}).eq("id",data.user.id);
+        }
+        if(!data.session)setMsg("Account created! Check your email to confirm, then sign in.");
+      } else {
+        const{error}=await sb.auth.resetPasswordForEmail(email);
+        if(error)setErr(error.message);else setMsg("Reset link sent — check your email.");
+      }
+    }catch(e){setErr(e.message);}
+    setLoading(false);
+  };
+
+  return<div className="min-h-screen flex flex-col items-center justify-center p-5"
+    style={{background:`radial-gradient(ellipse 80% 55% at 50% 0%,${C.primary}35,${C.bg} 68%)`,backgroundColor:C.bg}}>
+    <div className="mb-8 text-center">
+      <div className="inline-flex w-16 h-16 rounded-2xl items-center justify-center mb-4"
+        style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,boxShadow:`0 0 48px ${C.fuchsia}40`}}>
+        <Trophy size={30} color="white"/>
+      </div>
+      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:C.text,letterSpacing:2}}>SCHOLARS ELITE</div>
+      <div style={{fontSize:11,color:C.muted,letterSpacing:3,textTransform:"uppercase",marginTop:2}}>Family Recruiting Portal</div>
+    </div>
+
+    <div className="w-full max-w-sm rounded-2xl p-6" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.text,fontSize:17,fontWeight:700,marginBottom:3}}>
+        {mode==="login"?"Welcome back":mode==="signup"?"Create your account":"Reset password"}
+      </div>
+      <div style={{color:C.muted,fontSize:12,marginBottom:18}}>
+        {mode==="login"?"Sign in to access your athlete's board":mode==="signup"?"Create your family account to get started":"Enter your email to receive a reset link"}
+      </div>
+
+      {err&&<Alert type="error">{err}</Alert>}
+      {msg&&<Alert type="success">{msg}</Alert>}
+
+      {mode==="signup"&&<FieldInput label="YOUR NAME" value={name} onChange={setName} placeholder="Sarah London"/>}
+      <FieldInput label="EMAIL" value={email} onChange={setEmail} type="email" placeholder="you@email.com"/>
+
+      {mode!=="forgot"&&(
+        <div className="mb-4">
+          <label style={{color:C.muted,fontSize:10,fontWeight:700,letterSpacing:1,display:"block",marginBottom:5}}>PASSWORD</label>
+          <div className="relative">
+            <input value={pass} onChange={e=>setPass(e.target.value)} type={show?"text":"password"} placeholder="••••••••"
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+              style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit",paddingRight:40}}
+              onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+            <button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{color:C.muted,cursor:"pointer"}}>
+              {show?<EyeOff size={15}/>:<Eye size={15}/>}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode==="signup"&&(
+        <div className="mb-4 p-4 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+          <div style={{color:C.sub,fontSize:12,fontWeight:600,marginBottom:10}}>Are you a parent or staff?</div>
+          <FieldInput label="ATHLETE ACCESS CODE (parents)" value={code} onChange={setCode} placeholder="e.g. LONDON2026" hint="Your coaching staff will provide this code"/>
+          <div style={{color:C.muted,fontSize:10,marginTop:-8}}>Staff? Enter: SCHOLARS-STAFF-2026</div>
+        </div>
+      )}
+
+      <button onClick={go} disabled={loading}
+        className="w-full py-3 rounded-xl font-bold text-sm mt-1 flex items-center justify-center gap-2"
+        style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:loading?"wait":"pointer"}}>
+        {loading?<><Spinner size={14}/> Working…</>:mode==="login"?"Sign In →":mode==="signup"?"Create Account →":"Send Reset Link"}
+      </button>
+
+      <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
+        {mode==="login"&&<>
+          <button onClick={()=>{setMode("signup");setErr("");setMsg("");}} style={{color:C.primary,fontSize:12,fontWeight:600,cursor:"pointer"}}>New family? Sign up</button>
+          <span style={{color:C.border}}>·</span>
+          <button onClick={()=>{setMode("forgot");setErr("");setMsg("");}} style={{color:C.muted,fontSize:12,cursor:"pointer"}}>Forgot password?</button>
+        </>}
+        {mode!=="login"&&<button onClick={()=>{setMode("login");setErr("");setMsg("");}} style={{color:C.primary,fontSize:12,fontWeight:600,cursor:"pointer"}}>← Back to sign in</button>}
+      </div>
+    </div>
+  </div>;
+}
+
+// ── ONBOARDING FLOW ───────────────────────────────────────────────────────────
+function OnboardingFlow({userName,athlete,board,onComplete}){
+  const[step,setStep]=useState(0);const[animKey,setAnimKey]=useState(0);
+  const firstName=userName?userName.split(" ")[0]:userName||"there";
+  const topSchool=[...(board||[])].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score)[0];
+
+  const next=()=>{setAnimKey(k=>k+1);step<3?setStep(s=>s+1):onComplete();};
+
+  const STEPS=[
+    {emoji:"👋",title:`Welcome, ${firstName}`,subtitle:`You now have access to ${athlete?.name||"your athlete"}'s official recruiting portal. Everything your coaching staff does — you'll see here in real time.`,cta:"Let's get started →",extra:null},
+    {emoji:"📊",title:"How placement scores work",subtitle:"Every school gets a score from 0–100 across 8 factors — basketball fit, opportunity, academics, geography, and more. The score drives everything.",cta:"Got it →",extra:"bands"},
+    {emoji:"🏫",title:topSchool?`Top fit: ${topSchool.school}`:"Your board is ready",subtitle:topSchool?`Staff has ${board?.length||0} school${(board?.length||0)!==1?"s":""} on the board. ${topSchool.school} is the current top placement fit.`:"Staff has set up your athlete's profile. Head to the Schools tab to start building.",cta:"See the breakdown →",extra:topSchool?"school":null},
+    {emoji:"🔔",title:"You're all set",subtitle:"You'll see updates here every time staff adds a school, changes a score, or logs an offer. The board is live.",cta:`Open ${athlete?.name?.split(" ")[0]||"the"}'s portal →`,extra:"checklist"},
+  ];
+
+  const s=STEPS[step];
+
+  return<div className="min-h-screen flex flex-col" style={{background:C.bg}}>
+    <div className="h-1 w-full" style={{background:C.border}}>
+      <div className="h-full transition-all duration-500" style={{width:`${(step/3)*100+(step===3?33:0)}%`,background:`linear-gradient(90deg,${C.primary},${C.fuchsia})`}}/>
+    </div>
+    <div style={{maxWidth:480,margin:"0 auto",padding:"32px 20px 40px",flex:1,display:"flex",flexDirection:"column"}}>
+      <div className="flex items-center justify-center gap-2 mb-10">
+        {[0,1,2,3].map(i=>(
+          <div key={i} className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300"
+              style={{background:i<step?C.green:i===step?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.card2,
+                color:i<=step?"white":C.muted,border:`1px solid ${i<step?C.green:i===step?C.primary:C.border}`,
+                transform:i===step?"scale(1.15)":"scale(1)"}}>
+              {i<step?<Check size={12}/>:i+1}
+            </div>
+            {i<3&&<div className="w-6 h-0.5 rounded-full transition-all duration-500" style={{background:i<step?C.green:C.border}}/>}
+          </div>
+        ))}
+      </div>
+
+      <div key={animKey} className="fade-up flex-1 flex flex-col">
+        <div className="rounded-2xl p-8 mb-5 text-center relative overflow-hidden"
+          style={{background:`linear-gradient(135deg,${C.primary}85,${C.fuchsia}45)`,border:`1px solid ${C.primary}60`}}>
+          <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)",backgroundSize:"12px 12px"}}/>
+          <div className="relative">
+            <div className="text-5xl mb-4" style={{animation:"popIn 0.4s ease"}}>{s.emoji}</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:27,fontWeight:800,color:"white",lineHeight:1.15,marginBottom:12}}>{s.title}</div>
+            <div style={{color:"rgba(255,255,255,0.72)",fontSize:14,lineHeight:1.65}}>{s.subtitle}</div>
+          </div>
+        </div>
+
+        {s.extra==="bands"&&(
+          <div className="rounded-2xl p-5 mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+            <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Score Bands</div>
+            {[{band:"A1",range:"90–100",label:"Priority Push",color:"#16A34A",desc:"Staff should be actively building this relationship now"},
+              {band:"A2",range:"80–89",label:"Strong Target",color:"#22C55E",desc:"Realistic fit — activate outreach"},
+              {band:"B1",range:"70–79",label:"Real Fit",color:"#F5A623",desc:"Keep warm, monitor closely"},
+              {band:"B2",range:"60–69",label:"Situational",color:"#EA7316",desc:"Only if mutual traction develops"},
+              {band:"C–D",range:"Below 60",label:"Low Priority",color:"#6B5E88",desc:"Not an active placement target"}
+            ].map(b=>(
+              <div key={b.band} className="flex items-center gap-3 p-3 rounded-xl mb-2 last:mb-0" style={{background:b.color+"12",border:`1px solid ${b.color}22`}}>
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0" style={{background:b.color+"25",color:b.color,border:`1px solid ${b.color}44`}}>{b.band}</div>
+                <div className="flex-1"><div style={{color:C.text,fontSize:13,fontWeight:700}}>{b.label} <span style={{color:b.color}}>{b.range}</span></div><div style={{color:C.muted,fontSize:11,marginTop:1}}>{b.desc}</div></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {s.extra==="school"&&topSchool&&(
+          <div className="rounded-2xl overflow-hidden mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+            <div className="p-5">
+              <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Top Placement Fit</div>
+              <div className="flex items-center gap-4 mb-4">
+                <ScoreRing score={topSchool.score} size={72}/>
+                <div className="flex-1">
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",color:C.text,fontSize:22,fontWeight:800,lineHeight:1}}>{topSchool.school}</div>
+                  <div style={{color:C.muted,fontSize:13,marginTop:2,marginBottom:8}}>{topSchool.conference}</div>
+                  <div className="flex flex-wrap gap-1.5"><TierBadge tier={topSchool.tier}/><Badge color={getBand(topSchool.score).color}>{getRecruit(parseInt((athlete?.player_level||athlete?.playerLevel||"PL3").replace("PL","")),parseInt(topSchool.tier.replace("T","")),topSchool.score)}</Badge></div>
+                </div>
+              </div>
+              {topSchool.notes&&<div className="p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,fontWeight:700,marginBottom:4}}>STAFF NOTE</div><div style={{color:C.sub,fontSize:12,lineHeight:1.5}}>{topSchool.notes}</div></div>}
+            </div>
+          </div>
+        )}
+
+        {s.extra==="checklist"&&(
+          <div className="rounded-2xl p-5 mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+            <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>What you can do</div>
+            {[{icon:"👀",label:"View placement board",sub:"See every school, score, and fit rating"},
+              {icon:"✏️",label:"Update athlete info",sub:"GPA, film link, offers received"},
+              {icon:"🏫",label:"Add schools to the board",sub:"Rate fit factors, see scores update live"},
+              {icon:"🔔",label:"Get notified on staff moves",sub:"Offer logged, level change, new school added"},
+            ].map((item,i)=>(
+              <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
+                <div className="text-xl flex-shrink-0 mt-0.5">{item.icon}</div>
+                <div><div style={{color:C.text,fontSize:13,fontWeight:700}}>{item.label}</div><div style={{color:C.muted,fontSize:11,marginTop:1}}>{item.sub}</div></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={next} className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 mt-auto"
+          style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer",boxShadow:`0 8px 30px ${C.primary}50`}}>
+          {s.cta}<ArrowRight size={16}/>
+        </button>
+        {step>0&&<button onClick={()=>{setAnimKey(k=>k+1);setStep(s=>s-1);}} className="w-full py-2 mt-3 text-sm font-bold" style={{color:C.muted,cursor:"pointer"}}>← Back</button>}
+        {step===0&&<button onClick={onComplete} className="w-full py-2 mt-3 text-sm" style={{color:C.muted,cursor:"pointer"}}>Skip intro</button>}
+      </div>
     </div>
   </div>;
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({athlete,board,feed=[]}){
-  const scored=[...board].map(s=>({...s,score:calcScore(s.factors)})).sort((a,b)=>b.score-a.score);
+function Dashboard({athlete,board,feed=[],isStaff=false}){
+  const scored=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score);
   const avg=board.length?Math.round(scored.reduce((a,s)=>a+s.score,0)/board.length):0;
   const priority=scored.filter(s=>["A1","A2"].includes(getBand(s.score).band)).length;
+  const pl=athlete.player_level||athlete.playerLevel||"PL3";
+  const offers=athlete.offers||[];
   return<div>
     <div className="rounded-2xl p-5 mb-4 relative overflow-hidden" style={{background:`linear-gradient(135deg,${C.primary}90,${C.fuchsia}50)`,border:`1px solid ${C.primary}60`}}>
       <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)",backgroundSize:"12px 12px"}}/>
       <div className="relative flex items-start justify-between">
-        <div className="flex-1"><div style={{color:"rgba(255,255,255,0.5)",fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Your Athlete</div>
+        <div className="flex-1">
+          <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Your Athlete</div>
           <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:"white",lineHeight:1.1}}>{athlete.name}</div>
-          <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,marginTop:3}}>{athlete.position}·{athlete.height}·Class of {athlete.gradYear}</div>
-          <div className="flex flex-wrap gap-2 mt-3"><PLBadge level={athlete.playerLevel}/><Badge color={C.gold}>GPA {athlete.gpa}</Badge>{(athlete.offers||[]).length>0&&<Badge color={C.green}>{athlete.offers.length} Offer{athlete.offers.length!==1?"s":""}</Badge>}</div>
+          <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,marginTop:3}}>{athlete.position}·{athlete.height}·Class of {athlete.grad_year||athlete.gradYear}</div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <PLBadge level={pl}/>
+            <Badge color={C.gold}>GPA {athlete.gpa}</Badge>
+            {offers.length>0&&<Badge color={C.green}>{offers.length} Offer{offers.length!==1?"s":""}</Badge>}
+          </div>
         </div>
         <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black ml-3 flex-shrink-0 text-base" style={{background:"rgba(255,255,255,0.15)",color:"white"}}>{athlete.name.split(" ").map(n=>n[0]).join("")}</div>
       </div>
-      {athlete.recruitingStory&&<div className="mt-4 pt-3 border-t" style={{borderColor:"rgba(255,255,255,0.15)"}}><p style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontStyle:"italic",lineHeight:1.5}}>"{athlete.recruitingStory}"</p></div>}
+      {(athlete.recruiting_story||athlete.recruitingStory)&&<div className="mt-4 pt-3 border-t" style={{borderColor:"rgba(255,255,255,0.15)"}}><p style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontStyle:"italic",lineHeight:1.5}}>"{athlete.recruiting_story||athlete.recruitingStory}"</p></div>}
     </div>
-    <div className="grid grid-cols-3 gap-3 mb-4">{[{label:"Schools",val:board.length,col:C.primary,Ic:School},{label:"Avg Fit",val:board.length?avg:"—",col:C.fuchsia,Ic:BarChart3},{label:"Priority",val:priority,col:C.gold,Ic:Zap}].map(({label,val,col,Ic})=><div key={label} className="rounded-xl p-4" style={{background:C.card,border:`1px solid ${C.border}`}}><Ic size={15} style={{color:col,marginBottom:8}}/><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:col,lineHeight:1}}>{val}</div><div style={{color:C.muted,fontSize:10,marginTop:2}}>{label}</div></div>)}</div>
-    {scored.slice(0,3).length>0?<div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Top Placement Fits</div>{scored.slice(0,3).map((s,i)=>{const{color}=getBand(s.score);const plN=parseInt(athlete.playerLevel.replace("PL",""));const tN=parseInt(s.tier.replace("T",""));const rec=getRecruit(plN,tN,s.score);return<div key={s.id} className="flex items-center gap-3 mb-3 last:mb-0 p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}><div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{background:i===0?C.gold+"25":C.border,color:i===0?C.gold:C.muted}}>{i+1}</div><div className="flex-1 min-w-0"><div style={{color:C.text,fontWeight:700,fontSize:14}}>{s.school}</div><div style={{color:C.muted,fontSize:11}}>{s.conference}·<span style={{color}}>{rec}</span></div></div><ScorePill score={s.score}/></div>;})}
-    </div>:<div className="rounded-2xl p-8 text-center mb-4" style={{background:C.card,border:`1px dashed ${C.border}`}}><Target size={28} style={{color:C.muted,margin:"0 auto 10px"}}/><div style={{color:C.text,fontWeight:600,marginBottom:4}}>Board is empty</div><div style={{color:C.muted,fontSize:12}}>Go to Schools tab to build your placement board</div></div>}
-    {feed.length>0&&<div className="rounded-2xl p-5" style={{background:C.card,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Recent Activity</div>{feed.map(f=><div key={f.id} className="flex gap-3 mb-3 last:mb-0"><div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{background:C.fuchsia}}/><div><div style={{color:C.text,fontSize:13}}>{f.message}</div><div style={{color:C.muted,fontSize:10,marginTop:2}}>{new Date(f.created_at).toLocaleDateString()}</div></div></div>)}</div>}
+
+    <div className="grid grid-cols-3 gap-3 mb-4">
+      {[{label:"Schools",val:board.length,col:C.primary,Ic:School},{label:"Avg Fit",val:board.length?avg:"—",col:C.fuchsia,Ic:BarChart3},{label:"Priority",val:priority,col:C.gold,Ic:Zap}].map(({label,val,col,Ic})=>(
+        <div key={label} className="rounded-xl p-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+          <Ic size={15} style={{color:col,marginBottom:8}}/>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:col,lineHeight:1}}>{val}</div>
+          <div style={{color:C.muted,fontSize:10,marginTop:2}}>{label}</div>
+        </div>
+      ))}
+    </div>
+
+    {scored.slice(0,3).length>0?(
+      <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Top Placement Fits</div>
+        {scored.slice(0,3).map((s,i)=>{
+          const{color}=getBand(s.score);
+          const plN=parseInt(pl.replace("PL",""));
+          const tN=parseInt((s.tier||"T3").replace("T",""));
+          const rec=getRecruit(plN,tN,s.score);
+          return<div key={s.id} className="flex items-center gap-3 mb-3 last:mb-0 p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{background:i===0?C.gold+"25":C.border,color:i===0?C.gold:C.muted}}>{i+1}</div>
+            <div className="flex-1 min-w-0">
+              <div style={{color:C.text,fontWeight:700,fontSize:14}}>{s.school}</div>
+              <div style={{color:C.muted,fontSize:11}}>{s.conference}·<span style={{color}}>{rec}</span></div>
+            </div>
+            <ScorePill score={s.score}/>
+          </div>;
+        })}
+      </div>
+    ):(
+      <div className="rounded-2xl p-8 text-center mb-4" style={{background:C.card,border:`1px dashed ${C.border}`}}>
+        <Target size={28} style={{color:C.muted,margin:"0 auto 10px"}}/>
+        <div style={{color:C.text,fontWeight:600,marginBottom:4}}>Board is empty</div>
+        <div style={{color:C.muted,fontSize:12}}>Go to Schools tab to build your placement board</div>
+      </div>
+    )}
+
+    {feed.length>0&&(
+      <div className="rounded-2xl p-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Recent Activity</div>
+        {feed.map(f=>(
+          <div key={f.id} className="flex gap-3 mb-3 last:mb-0">
+            <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{background:C.fuchsia}}/>
+            <div>
+              <div style={{color:C.text,fontSize:13}}>{f.message}</div>
+              <div style={{color:C.muted,fontSize:10,marginTop:2}}>{new Date(f.created_at).toLocaleDateString()}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
   </div>;
 }
 
 // ── ATHLETE EDITOR ────────────────────────────────────────────────────────────
 function AthleteEditor({athlete,isStaff,onSave}){
-  const[form,setForm]=useState({...athlete,offers:athlete.offers||[]});const[saved,setSaved]=useState(false);const[newOffer,setNewOffer]=useState("");
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));const save=()=>{onSave(form);setSaved(true);setTimeout(()=>setSaved(false),2000);};const addOffer=()=>{if(!newOffer.trim())return;set("offers",[...form.offers,newOffer.trim()]);setNewOffer("");};
+  const pl=athlete.player_level||athlete.playerLevel||"PL3";
+  const[form,setForm]=useState({...athlete,offers:athlete.offers||[],playerLevel:pl});
+  const[saving,setSaving]=useState(false);const[saved,setSaved]=useState(false);const[newOffer,setNewOffer]=useState("");
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const save=async()=>{setSaving(true);await onSave(form);setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const addOffer=()=>{if(!newOffer.trim())return;set("offers",[...form.offers,newOffer.trim()]);setNewOffer("");};
+
   return<div>
-    <div className="flex items-center justify-between mb-5"><div><div style={{color:C.text,fontSize:18,fontWeight:700}}>{athlete.name}</div><PLBadge level={form.playerLevel}/></div><button onClick={save} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold" style={{background:saved?C.green:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>{saved?<><Check size={14}/>Saved!</>:<><Edit3 size={14}/>Save</>}</button></div>
-    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Basic Info</div><div className="grid grid-cols-2 gap-3 mb-3">{[{k:"gpa",label:"GPA",ph:"3.5"},{k:"height",label:"Height",ph:"5'10\""}].map(f=><div key={f.k}><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>{f.label.toUpperCase()}</label><input value={form[f.k]||""} onChange={e=>set(f.k,e.target.value)} placeholder={f.ph} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/></div>)}</div><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>HIGHLIGHT FILM URL</label><input value={form.highlightLink||""} onChange={e=>set("highlightLink",e.target.value)} type="url" placeholder="https://hudl.com/…" className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/></div>
-    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Recruiting Visibility</div><FitSlider label="Visibility Score" maxPts={10} value={form.visibilityScore||5} onChange={v=>set("visibilityScore",v)}/></div>
-    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Scouting Notes</div>{[{k:"strengths",label:"STRENGTHS"},{k:"developmentNeeds",label:"DEVELOPMENT NEEDS"},{k:"recruitingStory",label:"RECRUITING STORY"}].map(f=><div key={f.k} className="mb-4 last:mb-0"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>{f.label}</label><textarea value={form[f.k]||""} onChange={e=>set(f.k,e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/></div>)}</div>
-    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>{isStaff?<><div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Player Level <span style={{color:C.fuchsia}}>(Staff Only)</span></div><div className="flex flex-wrap gap-2">{PLs.map(pl=><button key={pl} onClick={()=>set("playerLevel",pl)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:form.playerLevel===pl?PL_COLOR[pl]:C.card2,color:form.playerLevel===pl?"white":C.muted,border:`1px solid ${form.playerLevel===pl?PL_COLOR[pl]:C.border}`,cursor:"pointer"}}>{pl}·{PL_LABEL[pl]}</button>)}</div></>:<div className="flex items-center gap-3"><Lock size={14} style={{color:C.primary,flexShrink:0}}/><div><div style={{color:C.text,fontSize:13,fontWeight:600}}>Player Level is set by staff</div><div style={{color:C.muted,fontSize:11,marginTop:1}}>Current: <strong style={{color:C.text}}>{PL_LABEL[athlete.playerLevel]}</strong></div></div></div>}</div>
-    <div className="rounded-2xl p-5" style={{background:C.card,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Scholarship Offers</div>{form.offers.length>0&&<div className="flex flex-wrap gap-2 mb-3">{form.offers.map((o,i)=><span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold" style={{background:C.green+"22",color:C.green,border:`1px solid ${C.green}44`}}>{o}<button onClick={()=>set("offers",form.offers.filter((_,j)=>j!==i))} style={{cursor:"pointer",lineHeight:0,color:C.green}}><X size={10}/></button></span>)}</div>}<div className="flex gap-2"><input value={newOffer} onChange={e=>setNewOffer(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addOffer()} placeholder="School name + Enter…" className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/><button onClick={addOffer} className="px-3 rounded-xl" style={{background:C.green+"22",color:C.green,border:`1px solid ${C.green}44`,cursor:"pointer"}}><Plus size={16}/></button></div></div>
+    <div className="flex items-center justify-between mb-5">
+      <div><div style={{color:C.text,fontSize:18,fontWeight:700}}>{athlete.name}</div><PLBadge level={form.playerLevel}/></div>
+      <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold"
+        style={{background:saved?C.green:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>
+        {saving?<Spinner size={13}/>:saved?<><Check size={14}/>Saved!</>:<><Edit3 size={14}/>Save</>}
+      </button>
+    </div>
+
+    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Basic Info</div>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        {[{k:"gpa",label:"GPA",ph:"3.5"},{k:"height",label:"Height",ph:"5'10\""}].map(f=>(
+          <div key={f.k}>
+            <label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>{f.label.toUpperCase()}</label>
+            <input value={form[f.k]||""} onChange={e=>set(f.k,e.target.value)} placeholder={f.ph}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+              style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+              onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+          </div>
+        ))}
+      </div>
+      <label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>HIGHLIGHT FILM URL</label>
+      <input value={form.highlight_link||form.highlightLink||""} onChange={e=>set("highlight_link",e.target.value)} type="url" placeholder="https://hudl.com/…"
+        className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+        style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+        onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+    </div>
+
+    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Scouting Notes</div>
+      {[{k:"strengths",label:"STRENGTHS"},{k:"development_needs",label:"DEVELOPMENT NEEDS"},{k:"recruiting_story",label:"RECRUITING STORY"}].map(f=>(
+        <div key={f.k} className="mb-4 last:mb-0">
+          <label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>{f.label}</label>
+          <textarea value={form[f.k]||""} onChange={e=>set(f.k,e.target.value)} rows={2}
+            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+            style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+            onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+        </div>
+      ))}
+    </div>
+
+    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      {isStaff?(
+        <>
+          <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Player Level <span style={{color:C.fuchsia}}>(Staff Only)</span></div>
+          <div className="flex flex-wrap gap-2">
+            {PLs.map(p=>(
+              <button key={p} onClick={()=>set("playerLevel",p)} className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{background:form.playerLevel===p?PL_COLOR[p]:C.card2,color:form.playerLevel===p?"white":C.muted,border:`1px solid ${form.playerLevel===p?PL_COLOR[p]:C.border}`,cursor:"pointer"}}>
+                {p}·{PL_LABEL[p]}
+              </button>
+            ))}
+          </div>
+        </>
+      ):(
+        <div className="flex items-center gap-3">
+          <Lock size={14} style={{color:C.primary,flexShrink:0}}/>
+          <div>
+            <div style={{color:C.text,fontSize:13,fontWeight:600}}>Player Level is set by your coaching staff</div>
+            <div style={{color:C.muted,fontSize:11,marginTop:1}}>Current: <strong style={{color:C.text}}>{PL_LABEL[form.playerLevel]}</strong></div>
+          </div>
+        </div>
+      )}
+    </div>
+
+    <div className="rounded-2xl p-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Scholarship Offers</div>
+      {form.offers.length>0&&(
+        <div className="flex flex-wrap gap-2 mb-3">
+          {form.offers.map((o,i)=>(
+            <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold" style={{background:C.green+"22",color:C.green,border:`1px solid ${C.green}44`}}>
+              {o}<button onClick={()=>set("offers",form.offers.filter((_,j)=>j!==i))} style={{cursor:"pointer",lineHeight:0,color:C.green}}><X size={10}/></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input value={newOffer} onChange={e=>setNewOffer(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addOffer()} placeholder="School name + Enter…"
+          className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
+          style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+          onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+        <button onClick={addOffer} className="px-3 rounded-xl" style={{background:C.green+"22",color:C.green,border:`1px solid ${C.green}44`,cursor:"pointer"}}><Plus size={16}/></button>
+      </div>
+    </div>
   </div>;
 }
 
 // ── SCHOOL BOARD ──────────────────────────────────────────────────────────────
 function AddSchoolModal({athlete,board,isStaff,onAdd,onClose}){
-  const[step,setStep]=useState(1);const[search,setSearch]=useState("");const[selected,setSelected]=useState(null);const[custom,setCustom]=useState({school:"",conference:"",tier:"T3"});const[factors,setFactors]=useState({bbLevel:5,opportunity:5,athletic:5,skill:5,academic:5,style:5,geo:5,relationship:5});const[notes,setNotes]=useState("");
-  const existing=board.map(s=>s.school);const filtered=SCHOOL_DB.filter(s=>s.school.toLowerCase().includes(search.toLowerCase())&&!existing.includes(s.school));const school=selected||custom;const score=calcScore(factors);const{color}=getBand(score);const plN=parseInt(athlete.playerLevel.replace("PL",""));const tN=parseInt((school.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,score);
+  const[step,setStep]=useState(1);const[search,setSearch]=useState("");const[selected,setSelected]=useState(null);const[custom,setCustom]=useState({school:"",conference:"",tier:"T3"});const[factors,setFactors]=useState({bbLevel:5,opportunity:5,athletic:5,skill:5,academic:5,style:5,geo:5,relationship:5});const[notes,setNotes]=useState("");const[staffNotes,setStaffNotes]=useState("");const[saving,setSaving]=useState(false);
+  const existing=board.map(s=>s.school);const filtered=SCHOOL_DB.filter(s=>s.school.toLowerCase().includes(search.toLowerCase())&&!existing.includes(s.school));const school=selected||custom;const score=calcScore(factors);const{color}=getBand(score);const pl=athlete.player_level||athlete.playerLevel||"PL3";const plN=parseInt(pl.replace("PL",""));const tN=parseInt((school.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,score);
+  const doAdd=async()=>{setSaving(true);await onAdd({school:school.school,conference:school.conference,tier:school.tier,factors,notes,staff_notes:staffNotes,has_offer:false});setSaving(false);};
+
   return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.85)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col" style={{background:C.card,border:`1px solid ${C.border}`,maxHeight:"90vh"}}>
-      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}><div><div style={{color:C.text,fontWeight:700,fontSize:16}}>{step===1?"Add a School":`Rate: ${school.school||"Custom"}`}</div><div style={{color:C.muted,fontSize:12}}>Step {step} of 2</div></div><button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><X size={20}/></button></div>
-      <div className="overflow-y-auto flex-1 p-5">
-        {step===1?<><div className="relative mb-4"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:C.muted}}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search programs…" autoFocus className="w-full pl-9 pr-4 py-3 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/></div><div className="flex flex-col gap-2 mb-4">{filtered.slice(0,8).map(s=><button key={s.school} onClick={()=>{setSelected(s);setStep(2);}} className="flex items-center justify-between p-3.5 rounded-xl text-left" style={{background:C.card2,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}><div><div style={{color:C.text,fontWeight:600,fontSize:14}}>{s.school}</div><div style={{color:C.muted,fontSize:12}}>{s.conference}</div></div><TierBadge tier={s.tier}/></button>)}</div><div className="p-4 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Custom School</div><div className="grid grid-cols-2 gap-3 mb-3"><input value={custom.school} onChange={e=>setCustom(c=>({...c,school:e.target.value}))} placeholder="School name" className="px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/><input value={custom.conference} onChange={e=>setCustom(c=>({...c,conference:e.target.value}))} placeholder="Conference" className="px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div><div className="flex flex-wrap gap-1.5 mb-3">{TIERS.map(t=><button key={t} onClick={()=>setCustom(c=>({...c,tier:t}))} className="px-2.5 py-1 rounded-lg text-xs font-bold" style={{background:custom.tier===t?TIER_COLOR[t]:C.card,color:custom.tier===t?"white":C.muted,border:`1px solid ${custom.tier===t?TIER_COLOR[t]:C.border}`,cursor:"pointer"}}>{t}</button>)}</div><button onClick={()=>custom.school.trim()&&setStep(2)} disabled={!custom.school.trim()} className="w-full py-2.5 rounded-xl text-sm font-bold" style={{background:custom.school.trim()?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.border,color:"white",cursor:custom.school.trim()?"pointer":"default"}}>Rate This School →</button></div></>:<><div className="flex items-center justify-between p-4 rounded-xl mb-4" style={{background:C.card2,border:`1px solid ${color}44`}}><div><TierBadge tier={school.tier||"T3"}/><div style={{color,fontSize:12,fontWeight:600,marginTop:4}}>{rec}</div></div><ScoreRing score={score} size={68}/></div><div className="h-2 rounded-full overflow-hidden mb-4" style={{background:C.border}}><div className="h-full rounded-full transition-all" style={{width:`${score}%`,background:`linear-gradient(90deg,${C.primary},${color})`}}/></div>{Object.entries(FACTOR_LABELS).map(([k,lbl])=><FitSlider key={k} label={lbl} maxPts={MAX_PTS[k]} value={factors[k]} onChange={v=>setFactors(f=>({...f,[k]:v}))}/>)}<div className="mt-3"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>NOTES</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div></>}
+      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}>
+        <div><div style={{color:C.text,fontWeight:700,fontSize:16}}>{step===1?"Add a School":`Rate: ${school.school||"Custom"}`}</div><div style={{color:C.muted,fontSize:12}}>Step {step} of 2</div></div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><X size={20}/></button>
       </div>
-      <div className="p-5 border-t flex gap-3" style={{borderColor:C.border}}>{step===2&&<button onClick={()=>setStep(1)} className="flex items-center gap-1.5 px-4 py-3 rounded-xl text-sm font-bold" style={{background:C.card2,color:C.muted,border:`1px solid ${C.border}`,cursor:"pointer"}}><ArrowLeft size={14}/>Back</button>}{step===2&&<button onClick={()=>onAdd({id:Date.now().toString(),school:school.school,conference:school.conference,tier:school.tier,factors,notes,hasOffer:false})} className="flex-1 py-3 rounded-xl font-bold text-sm" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>Add to Board — Score {score}/100</button>}</div>
+      <div className="overflow-y-auto flex-1 p-5">
+        {step===1?(<>
+          <div className="relative mb-4"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:C.muted}}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search programs…" autoFocus className="w-full pl-9 pr-4 py-3 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/></div>
+          <div className="flex flex-col gap-2 mb-4">{filtered.slice(0,8).map(s=><button key={s.school} onClick={()=>{setSelected(s);setStep(2);}} className="flex items-center justify-between p-3.5 rounded-xl text-left" style={{background:C.card2,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}><div><div style={{color:C.text,fontWeight:600,fontSize:14}}>{s.school}</div><div style={{color:C.muted,fontSize:12}}>{s.conference}</div></div><TierBadge tier={s.tier}/></button>)}</div>
+          <div className="p-4 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+            <div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Custom School</div>
+            <div className="grid grid-cols-2 gap-3 mb-3"><input value={custom.school} onChange={e=>setCustom(c=>({...c,school:e.target.value}))} placeholder="School name" className="px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/><input value={custom.conference} onChange={e=>setCustom(c=>({...c,conference:e.target.value}))} placeholder="Conference" className="px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div>
+            <div className="flex flex-wrap gap-1.5 mb-3">{TIERS.map(t=><button key={t} onClick={()=>setCustom(c=>({...c,tier:t}))} className="px-2.5 py-1 rounded-lg text-xs font-bold" style={{background:custom.tier===t?TIER_COLOR[t]:C.card,color:custom.tier===t?"white":C.muted,border:`1px solid ${custom.tier===t?TIER_COLOR[t]:C.border}`,cursor:"pointer"}}>{t}</button>)}</div>
+            <button onClick={()=>custom.school.trim()&&setStep(2)} disabled={!custom.school.trim()} className="w-full py-2.5 rounded-xl text-sm font-bold" style={{background:custom.school.trim()?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.border,color:"white",cursor:custom.school.trim()?"pointer":"default"}}>Rate This School →</button>
+          </div>
+        </>):(<>
+          <div className="flex items-center justify-between p-4 rounded-xl mb-4" style={{background:C.card2,border:`1px solid ${color}44`}}><div><TierBadge tier={school.tier||"T3"}/><div style={{color,fontSize:12,fontWeight:600,marginTop:4}}>{rec}</div></div><ScoreRing score={score} size={68}/></div>
+          <div className="h-2 rounded-full overflow-hidden mb-4" style={{background:C.border}}><div className="h-full rounded-full transition-all" style={{width:`${score}%`,background:`linear-gradient(90deg,${C.primary},${color})`}}/></div>
+          {Object.entries(FACTOR_LABELS).map(([k,lbl])=><FitSlider key={k} label={lbl} maxPts={MAX_PTS[k]} value={factors[k]} onChange={v=>setFactors(f=>({...f,[k]:v}))}/>)}
+          <div className="mt-3"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>NOTES</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} placeholder="Context, intel, reasons…" className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div>
+          {isStaff&&<div className="mt-3"><label style={{color:C.fuchsia,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>STAFF NOTES (private — families won't see this)</label><textarea value={staffNotes} onChange={e=>setStaffNotes(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.fuchsia+"10",border:`1px solid ${C.fuchsia}44`,color:C.text,fontFamily:"inherit"}}/></div>}
+        </>)}
+      </div>
+      <div className="p-5 border-t flex gap-3" style={{borderColor:C.border}}>
+        {step===2&&<button onClick={()=>setStep(1)} className="flex items-center gap-1.5 px-4 py-3 rounded-xl text-sm font-bold" style={{background:C.card2,color:C.muted,border:`1px solid ${C.border}`,cursor:"pointer"}}><ArrowLeft size={14}/>Back</button>}
+        {step===2&&<button onClick={doAdd} disabled={saving} className="flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>
+          {saving?<><Spinner size={13}/>Saving…</>:`Add to Board — Score ${score}/100`}
+        </button>}
+      </div>
     </div>
   </div>;
 }
 
 function EditSchoolModal({school,athlete,isStaff,onSave,onClose}){
-  const[factors,setFactors]=useState({...school.factors});const[notes,setNotes]=useState(school.notes||"");const[hasOffer,setHasOffer]=useState(school.hasOffer||false);const[lastContact,setLastContact]=useState(school.lastContact||"");
-  const score=calcScore(factors);const{band,color}=getBand(score);const plN=parseInt(athlete.playerLevel.replace("PL",""));const tN=parseInt(school.tier.replace("T",""));const rec=getRecruit(plN,tN,score);
+  const[factors,setFactors]=useState({...(school.factors||{})});const[notes,setNotes]=useState(school.notes||"");const[staffNotes,setStaffNotes]=useState(school.staff_notes||school.staffNotes||"");const[hasOffer,setHasOffer]=useState(school.has_offer||school.hasOffer||false);const[lastContact,setLastContact]=useState(school.last_contact||school.lastContact||"");const[saving,setSaving]=useState(false);
+  const score=calcScore(factors);const{band,color}=getBand(score);const pl=athlete.player_level||athlete.playerLevel||"PL3";const plN=parseInt(pl.replace("PL",""));const tN=parseInt((school.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,score);
+  const save=async()=>{setSaving(true);await onSave({...school,factors,notes,staff_notes:staffNotes,has_offer:hasOffer,last_contact:lastContact});setSaving(false);};
+
   return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.85)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col" style={{background:C.card,border:`1px solid ${C.border}`,maxHeight:"90vh"}}>
-      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}><div><div style={{color:C.text,fontWeight:700,fontSize:17}}>{school.school}</div><TierBadge tier={school.tier}/></div><button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><X size={20}/></button></div>
+      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}>
+        <div><div style={{color:C.text,fontWeight:700,fontSize:17}}>{school.school}</div><TierBadge tier={school.tier||"T3"}/></div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><X size={20}/></button>
+      </div>
       <div className="overflow-y-auto flex-1 p-5">
         <div className="flex items-center justify-between mb-2"><div><div style={{color:C.muted,fontSize:12}}>Live Score</div><div style={{color,fontSize:12,fontWeight:600}}>{rec}</div></div><ScoreRing score={score} size={68}/></div>
         <div className="h-2 rounded-full overflow-hidden mb-4" style={{background:C.border}}><div className="h-full rounded-full transition-all" style={{width:`${score}%`,background:`linear-gradient(90deg,${C.primary},${color})`}}/></div>
         {Object.entries(FACTOR_LABELS).map(([k,lbl])=><FitSlider key={k} label={lbl} maxPts={MAX_PTS[k]} value={factors[k]||0} onChange={v=>setFactors(f=>({...f,[k]:v}))}/>)}
         <label className="flex items-center gap-3 p-3 rounded-xl mb-4 cursor-pointer" style={{background:C.card2,border:`1px solid ${C.border}`}}><input type="checkbox" checked={hasOffer} onChange={e=>setHasOffer(e.target.checked)} style={{accentColor:C.green,width:16,height:16}}/><span style={{color:C.text,fontSize:14}}>Scholarship offer received</span></label>
         <div className="mb-4"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>LAST CONTACT DATE</label><input type="date" value={lastContact} onChange={e=>setLastContact(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit",colorScheme:"dark"}}/></div>
-        <div><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>NOTES</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div>
+        <div className="mb-4"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>NOTES</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div>
+        {isStaff&&<div><label style={{color:C.fuchsia,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>STAFF NOTES (private)</label><textarea value={staffNotes} onChange={e=>setStaffNotes(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.fuchsia+"10",border:`1px solid ${C.fuchsia}44`,color:C.text,fontFamily:"inherit"}}/></div>}
       </div>
-      <div className="p-5 border-t" style={{borderColor:C.border}}><button onClick={()=>onSave({...school,factors,notes,hasOffer,lastContact})} className="w-full py-3 rounded-xl font-bold text-sm" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>Save — Score {score}/100·Band {band}</button></div>
+      <div className="p-5 border-t" style={{borderColor:C.border}}>
+        <button onClick={save} disabled={saving} className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>
+          {saving?<><Spinner size={13}/>Saving…</>:`Save — Score ${score}/100 · Band ${band}`}
+        </button>
+      </div>
     </div>
   </div>;
 }
 
 function SchoolBoard({athlete,board,isStaff,onAdd,onUpdate,onRemove}){
   const[showAdd,setShowAdd]=useState(false);const[editing,setEditing]=useState(null);const[sortBy,setSortBy]=useState("score");
-  const scored=[...board].map(s=>({...s,score:calcScore(s.factors)})).sort((a,b)=>sortBy==="score"?b.score-a.score:sortBy==="school"?a.school.localeCompare(b.school):parseInt(a.tier.slice(1))-parseInt(b.tier.slice(1)));
+  const scored=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>sortBy==="score"?b.score-a.score:sortBy==="school"?a.school.localeCompare(b.school):parseInt((a.tier||"T3").slice(1))-parseInt((b.tier||"T3").slice(1)));
+
   return<div>
-    <div className="flex items-center justify-between mb-4"><div><div style={{color:C.text,fontWeight:700,fontSize:16}}>{board.length} School{board.length!==1?"s":""}</div><div style={{color:C.muted,fontSize:12}}>Tap to edit fit factors</div></div><div className="flex gap-2"><select value={sortBy} onChange={e=>setSortBy(e.target.value)} className="px-3 py-2 rounded-xl text-xs outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.sub,cursor:"pointer"}}><option value="score">By Score</option><option value="school">A–Z</option><option value="tier">By Tier</option></select><button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}><Plus size={14}/>Add</button></div></div>
-    <div className="flex flex-col gap-3">{scored.map(s=>{const{band,color}=getBand(s.score);const plN=parseInt(athlete.playerLevel.replace("PL",""));const tN=parseInt(s.tier.replace("T",""));const rec=getRecruit(plN,tN,s.score);return<div key={s.id} className="rounded-2xl overflow-hidden" style={{background:C.card,border:`1px solid ${C.border}`}}><div className="p-4"><div className="flex items-start gap-3"><ScoreRing score={s.score} size={60}/><div className="flex-1 min-w-0"><div style={{color:C.text,fontWeight:700,fontSize:15}}>{s.school}</div><div style={{color:C.muted,fontSize:12,marginBottom:6}}>{s.conference}</div><div className="flex flex-wrap gap-1.5"><TierBadge tier={s.tier}/><Badge color={color}>{rec}</Badge>{s.hasOffer&&<Badge color={C.green}>✓ Offer</Badge>}</div></div></div><div className="mt-3 grid grid-cols-4 gap-1">{Object.entries(s.factors).map(([k,v])=>{const c=v>=8?C.green:v>=6?C.gold:v>=4?"#EA7316":C.red;return<div key={k} title={`${FACTOR_LABELS[k]}: ${v}/10`}><div style={{color:C.muted,fontSize:9,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{FACTOR_LABELS[k].split(" ")[0]}</div><div className="h-1.5 rounded-full" style={{background:C.border}}><div style={{width:`${v*10}%`,height:"100%",borderRadius:9999,background:c}}/></div></div>;})} </div>{s.notes&&<div style={{color:C.muted,fontSize:12,fontStyle:"italic",marginTop:8}}>"{s.notes}"</div>}</div><div className="flex" style={{borderTop:`1px solid ${C.border}`}}><button onClick={()=>setEditing(s)} className="flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5" style={{color:C.primary,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.primary+"15"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Sliders size={12}/>Edit Fit Factors</button><div style={{width:1,background:C.border}}/><button onClick={()=>onRemove(s.id)} className="px-5 py-2.5 flex items-center justify-center" style={{color:C.red,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.red+"15"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Trash2 size={13}/></button></div></div>;})}
+    <div className="flex items-center justify-between mb-4">
+      <div><div style={{color:C.text,fontWeight:700,fontSize:16}}>{board.length} School{board.length!==1?"s":""}</div><div style={{color:C.muted,fontSize:12}}>Tap to edit fit factors</div></div>
+      <div className="flex gap-2">
+        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} className="px-3 py-2 rounded-xl text-xs outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.sub,cursor:"pointer"}}>
+          <option value="score">By Score</option><option value="school">A–Z</option><option value="tier">By Tier</option>
+        </select>
+        <button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}><Plus size={14}/>Add</button>
+      </div>
     </div>
+
+    <div className="flex flex-col gap-3">
+      {scored.map(s=>{
+        const{band,color}=getBand(s.score);const pl=athlete.player_level||athlete.playerLevel||"PL3";const plN=parseInt(pl.replace("PL",""));const tN=parseInt((s.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,s.score);const hasOffer=s.has_offer||s.hasOffer;
+        return<div key={s.id} className="rounded-2xl overflow-hidden" style={{background:C.card,border:`1px solid ${C.border}`}}>
+          <div className="p-4">
+            <div className="flex items-start gap-3">
+              <ScoreRing score={s.score} size={60}/>
+              <div className="flex-1 min-w-0">
+                <div style={{color:C.text,fontWeight:700,fontSize:15}}>{s.school}</div>
+                <div style={{color:C.muted,fontSize:12,marginBottom:6}}>{s.conference}</div>
+                <div className="flex flex-wrap gap-1.5"><TierBadge tier={s.tier||"T3"}/><Badge color={color}>{rec}</Badge>{hasOffer&&<Badge color={C.green}>✓ Offer</Badge>}</div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-1">
+              {Object.entries(s.factors||{}).map(([k,v])=>{const c=v>=8?C.green:v>=6?C.gold:v>=4?"#EA7316":C.red;return<div key={k} title={`${FACTOR_LABELS[k]}: ${v}/10`}><div style={{color:C.muted,fontSize:9,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{FACTOR_LABELS[k].split(" ")[0]}</div><div className="h-1.5 rounded-full" style={{background:C.border}}><div style={{width:`${(v||0)*10}%`,height:"100%",borderRadius:9999,background:c}}/></div></div>;})}
+            </div>
+            {s.notes&&<div style={{color:C.muted,fontSize:12,fontStyle:"italic",marginTop:8}}>"{s.notes}"</div>}
+            {isStaff&&s.staff_notes&&<div className="mt-2 p-2 rounded-lg" style={{background:C.fuchsia+"12",border:`1px solid ${C.fuchsia}33`}}><span style={{color:C.fuchsia,fontSize:10,fontWeight:700}}>STAFF · </span><span style={{color:C.sub,fontSize:12}}>{s.staff_notes}</span></div>}
+          </div>
+          <div className="flex" style={{borderTop:`1px solid ${C.border}`}}>
+            <button onClick={()=>setEditing(s)} className="flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5" style={{color:C.primary,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.primary+"15"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Sliders size={12}/>Edit Fit Factors</button>
+            <div style={{width:1,background:C.border}}/>
+            <button onClick={()=>onRemove(s.id)} className="px-5 py-2.5 flex items-center justify-center" style={{color:C.red,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.red+"15"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Trash2 size={13}/></button>
+          </div>
+        </div>;
+      })}
+    </div>
+
     {board.length===0&&<div className="rounded-2xl p-10 text-center mt-2" style={{background:C.card,border:`1px dashed ${C.border}`}}><School size={30} style={{color:C.muted,margin:"0 auto 12px"}}/><div style={{color:C.text,fontWeight:600,marginBottom:4}}>Board is empty</div><div style={{color:C.muted,fontSize:13,marginBottom:16}}>Add schools and rate fit to see scores update live</div><button onClick={()=>setShowAdd(true)} className="px-6 py-3 rounded-xl font-bold text-sm" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>+ Add First School</button></div>}
-    {showAdd&&<AddSchoolModal athlete={athlete} board={board} isStaff={isStaff} onAdd={s=>{onAdd(s);setShowAdd(false);}} onClose={()=>setShowAdd(false)}/>}
-    {editing&&<EditSchoolModal school={editing} athlete={athlete} isStaff={isStaff} onSave={s=>{onUpdate(s);setEditing(null);}} onClose={()=>setEditing(null)}/>}
+    {showAdd&&<AddSchoolModal athlete={athlete} board={board} isStaff={isStaff} onAdd={async s=>{await onAdd(s);setShowAdd(false);}} onClose={()=>setShowAdd(false)}/>}
+    {editing&&<EditSchoolModal school={editing} athlete={athlete} isStaff={isStaff} onSave={async s=>{await onUpdate(s);setEditing(null);}} onClose={()=>setEditing(null)}/>}
   </div>;
 }
 
 // ── STAFF VIEW ────────────────────────────────────────────────────────────────
-function StaffView({athletes,boards,onUpdateAthlete,onUpdateBoard}){
-  const[selected,setSelected]=useState(null);const[tab,setTab]=useState("dashboard");const list=Object.values(athletes);
-  if(selected){const athlete=athletes[selected];const board=boards[selected]||[];return<div><button onClick={()=>setSelected(null)} className="flex items-center gap-2 mb-5 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><ArrowLeft size={14}/>Roster</button><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:C.text,marginBottom:10}}>{athlete.name}</div><div className="flex gap-2 mb-5 pb-4 border-b" style={{borderColor:C.border}}>{["dashboard","athlete","schools"].map(t=><button key={t} onClick={()=>setTab(t)} className="px-4 py-2 rounded-xl text-sm font-bold capitalize" style={{background:tab===t?C.primary:C.card2,color:tab===t?"white":C.muted,cursor:"pointer"}}>{t}</button>)}</div>{tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={SEED_FEED[selected]||[]}/>}{tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={true} onSave={u=>onUpdateAthlete(selected,u)}/>}{tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={true} onAdd={s=>onUpdateBoard(selected,[...board,s])} onUpdate={s=>onUpdateBoard(selected,board.map(b=>b.id===s.id?s:b))} onRemove={id=>onUpdateBoard(selected,board.filter(b=>b.id!==id))}/>}</div>;}
-  return<div><div className="mb-5"><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:C.text}}>Roster</div><div style={{color:C.muted,fontSize:13}}>{list.length} athletes in the portal</div></div><div className="flex flex-col gap-3">{list.map(a=>{const ab=boards[a.id]||[];const scored=ab.map(s=>calcScore(s.factors));const top=scored.length?Math.max(...scored):0;const{color}=getBand(top);const p1=ab.filter(s=>getBand(calcScore(s.factors)).band==="A1").length;return<button key={a.id} onClick={()=>{setSelected(a.id);setTab("dashboard");}} className="flex items-center gap-4 p-4 rounded-2xl text-left w-full" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}><div className="w-11 h-11 rounded-xl flex items-center justify-center font-black flex-shrink-0 text-sm" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white"}}>{a.name.split(" ").map(n=>n[0]).join("")}</div><div className="flex-1 min-w-0"><div style={{color:C.text,fontWeight:700,fontSize:14}}>{a.name}</div><div style={{color:C.muted,fontSize:11}}>{a.position}·{a.height}·{a.gradYear}</div><div className="flex flex-wrap gap-1.5 mt-1"><PLBadge level={a.playerLevel}/><Badge color={C.gold}>GPA {a.gpa}</Badge>{p1>0&&<Badge color={C.red}>🔴 {p1} P1</Badge>}</div></div><div className="text-right flex-shrink-0">{top>0?<><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color,lineHeight:1}}>{top}</div><div style={{color:C.muted,fontSize:10}}>top fit</div></>:<div style={{color:C.muted,fontSize:12}}>No board</div>}</div></button>;})} </div></div>;
+function StaffView({sb,session,displayName}){
+  const[athletes,setAthletes]=useState([]);const[boards,setBoards]=useState({});const[feed,setFeed]=useState({});const[selected,setSelected]=useState(null);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");
+
+  useEffect(()=>{load();},[]);
+
+  const load=async()=>{
+    setLoading(true);
+    const{data:ath,error}=await sb.from("athletes").select("*").order("name");
+    if(error){setErr("Failed to load athletes: "+error.message);setLoading(false);return;}
+    setAthletes(ath||[]);
+    if(ath){
+      const bMap={};
+      for(const a of ath){
+        const{data:bd}=await sb.from("school_boards").select("*").eq("athlete_id",a.id).order("created_at");
+        bMap[a.id]=bd||[];
+      }
+      setBoards(bMap);
+    }
+    setLoading(false);
+  };
+
+  const loadFeed=async(athleteId)=>{
+    const{data}=await sb.from("activity_feed").select("*").eq("athlete_id",athleteId).order("created_at",{ascending:false}).limit(10);
+    setFeed(f=>({...f,[athleteId]:data||[]}));
+  };
+
+  const logActivity=async(athleteId,type,message,meta={})=>{
+    await sb.from("activity_feed").insert({athlete_id:athleteId,actor_id:session.user.id,actor_name:displayName||"Staff",type,message,meta});
+  };
+
+  const saveAthlete=async(athleteId,updated)=>{
+    const prev=athletes.find(a=>a.id===athleteId);
+    const{error}=await sb.from("athletes").update({
+      gpa:updated.gpa,height:updated.height,archetype:updated.archetype,
+      player_level:updated.playerLevel||updated.player_level,
+      strengths:updated.strengths,development_needs:updated.development_needs,
+      recruiting_story:updated.recruiting_story,offers:updated.offers,
+      highlight_link:updated.highlight_link,visibility_score:updated.visibility_score
+    }).eq("id",athleteId);
+    if(!error){
+      setAthletes(ats=>ats.map(a=>a.id===athleteId?{...a,...updated,player_level:updated.playerLevel||updated.player_level}:a));
+      if(prev?.player_level!==(updated.playerLevel||updated.player_level)){
+        await logActivity(athleteId,"player_level_set",`Player level updated to ${updated.playerLevel||updated.player_level}`);
+      }
+    }
+  };
+
+  const addSchool=async(athleteId,s)=>{
+    const{data,error}=await sb.from("school_boards").insert({...s,athlete_id:athleteId,created_by:session.user.id,updated_by:session.user.id}).select().single();
+    if(!error&&data){
+      setBoards(b=>({...b,[athleteId]:[...(b[athleteId]||[]),data]}));
+      await logActivity(athleteId,"school_added",`Staff added ${s.school} to board (Score: ${calcScore(s.factors)}/100)`,{school:s.school,score:calcScore(s.factors)});
+    }
+  };
+
+  const updateSchool=async(athleteId,s)=>{
+    const{error}=await sb.from("school_boards").update({...s,updated_by:session.user.id}).eq("id",s.id);
+    if(!error){
+      setBoards(b=>({...b,[athleteId]:(b[athleteId]||[]).map(e=>e.id===s.id?{...e,...s}:e)}));
+      await logActivity(athleteId,"score_updated",`Updated fit factors for ${s.school}`,{school:s.school,score:calcScore(s.factors||{})});
+    }
+  };
+
+  const removeSchool=async(athleteId,id)=>{
+    const s=(boards[athleteId]||[]).find(e=>e.id===id);
+    await sb.from("school_boards").delete().eq("id",id);
+    setBoards(b=>({...b,[athleteId]:(b[athleteId]||[]).filter(e=>e.id!==id)}));
+    if(s)await logActivity(athleteId,"school_removed",`Removed ${s.school} from board`);
+  };
+
+  if(loading)return<div className="flex items-center justify-center py-20"><Spinner size={24}/></div>;
+  if(err)return<div className="p-4"><Alert type="error">{err}</Alert><button onClick={load} className="flex items-center gap-2 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><RefreshCw size={14}/>Retry</button></div>;
+
+  if(selected){
+    const athlete=athletes.find(a=>a.id===selected);
+    const board=boards[selected]||[];
+    const athleteFeed=feed[selected]||[];
+    if(!athlete)return null;
+    return<div>
+      <button onClick={()=>setSelected(null)} className="flex items-center gap-2 mb-5 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><ArrowLeft size={14}/>Roster</button>
+      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:C.text,marginBottom:10}}>{athlete.name}</div>
+      <div className="flex gap-2 mb-5 pb-4 border-b" style={{borderColor:C.border}}>
+        {["dashboard","athlete","schools"].map(t=><button key={t} onClick={()=>{setTab(t);if(t==="dashboard")loadFeed(selected);}} className="px-4 py-2 rounded-xl text-sm font-bold capitalize" style={{background:tab===t?C.primary:C.card2,color:tab===t?"white":C.muted,cursor:"pointer"}}>{t}</button>)}
+      </div>
+      {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={athleteFeed} isStaff={true}/>}
+      {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={true} onSave={u=>saveAthlete(selected,u)}/>}
+      {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={true} onAdd={s=>addSchool(selected,s)} onUpdate={s=>updateSchool(selected,s)} onRemove={id=>removeSchool(selected,id)}/>}
+    </div>;
+  }
+
+  return<div>
+    <div className="flex items-center justify-between mb-5">
+      <div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:C.text}}>Roster</div><div style={{color:C.muted,fontSize:13}}>{athletes.length} athletes</div></div>
+      <button onClick={load} style={{color:C.muted,cursor:"pointer"}}><RefreshCw size={16}/></button>
+    </div>
+    <div className="flex flex-col gap-3">
+      {athletes.map(a=>{
+        const ab=boards[a.id]||[];const scored=ab.map(s=>calcScore(s.factors||{}));const top=scored.length?Math.max(...scored):0;const{color}=getBand(top);const p1=ab.filter(s=>getBand(calcScore(s.factors||{})).band==="A1").length;
+        return<button key={a.id} onClick={()=>{setSelected(a.id);setTab("dashboard");loadFeed(a.id);}} className="flex items-center gap-4 p-4 rounded-2xl text-left w-full" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center font-black flex-shrink-0 text-sm" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white"}}>{a.name.split(" ").map(n=>n[0]).join("")}</div>
+          <div className="flex-1 min-w-0">
+            <div style={{color:C.text,fontWeight:700,fontSize:14}}>{a.name}</div>
+            <div style={{color:C.muted,fontSize:11}}>{a.position}·{a.height}·{a.grad_year}</div>
+            <div className="flex flex-wrap gap-1.5 mt-1"><PLBadge level={a.player_level||"PL3"}/><Badge color={C.gold}>GPA {a.gpa}</Badge>{p1>0&&<Badge color={C.red}>🔴 {p1} P1</Badge>}</div>
+          </div>
+          <div className="text-right flex-shrink-0">{top>0?<><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color,lineHeight:1}}>{top}</div><div style={{color:C.muted,fontSize:10}}>top fit</div></>:<div style={{color:C.muted,fontSize:12}}>No board</div>}</div>
+        </button>;
+      })}
+    </div>
+  </div>;
+}
+
+// ── PARENT VIEW ───────────────────────────────────────────────────────────────
+function ParentView({sb,session,profile,displayName,onShowOnboarding}){
+  const[athlete,setAthlete]=useState(null);const[board,setBoard]=useState([]);const[feed,setFeed]=useState([]);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");
+
+  const athleteId=profile?.athlete_id;
+
+  useEffect(()=>{if(athleteId)load();},[athleteId]);
+
+  const load=async()=>{
+    setLoading(true);
+    const{data:a,error}=await sb.from("athletes").select("*").eq("id",athleteId).single();
+    if(error||!a){setErr("Could not load athlete data. Contact your coaching staff.");setLoading(false);return;}
+    setAthlete(a);
+    const{data:bd}=await sb.from("school_boards").select("*").eq("athlete_id",athleteId).order("created_at");
+    setBoard(bd||[]);
+    const{data:fd}=await sb.from("activity_feed").select("*").eq("athlete_id",athleteId).order("created_at",{ascending:false}).limit(10);
+    setFeed(fd||[]);
+    setLoading(false);
+  };
+
+  const logActivity=async(type,message,meta={})=>{
+    if(!athleteId)return;
+    await sb.from("activity_feed").insert({athlete_id:athleteId,actor_id:session.user.id,actor_name:displayName||session.user.email,type,message,meta});
+    const{data}=await sb.from("activity_feed").select("*").eq("athlete_id",athleteId).order("created_at",{ascending:false}).limit(10);
+    setFeed(data||[]);
+  };
+
+  const saveAthlete=async(updated)=>{
+    const{error}=await sb.from("athletes").update({gpa:updated.gpa,height:updated.height,strengths:updated.strengths,development_needs:updated.development_needs,recruiting_story:updated.recruiting_story,offers:updated.offers,highlight_link:updated.highlight_link,visibility_score:updated.visibility_score}).eq("id",athleteId);
+    if(!error){setAthlete(a=>({...a,...updated}));await logActivity("profile_updated","Family updated athlete profile");}
+  };
+
+  const addSchool=async(s)=>{
+    const{data,error}=await sb.from("school_boards").insert({...s,athlete_id:athleteId,created_by:session.user.id,updated_by:session.user.id}).select().single();
+    if(!error&&data){setBoard(b=>[...b,data]);await logActivity("school_added",`Added ${s.school} to board (Score: ${calcScore(s.factors)}/100)`,{school:s.school});}
+  };
+
+  const updateSchool=async(s)=>{
+    const{error}=await sb.from("school_boards").update({...s,updated_by:session.user.id}).eq("id",s.id);
+    if(!error){setBoard(b=>b.map(e=>e.id===s.id?{...e,...s}:e));await logActivity("score_updated",`Updated fit factors for ${s.school}`,{school:s.school,score:calcScore(s.factors||{})});}
+  };
+
+  const removeSchool=async(id)=>{
+    const s=board.find(e=>e.id===id);
+    await sb.from("school_boards").delete().eq("id",id);
+    setBoard(b=>b.filter(e=>e.id!==id));
+    if(s)await logActivity("school_removed",`Removed ${s.school} from board`);
+  };
+
+  if(loading)return<div className="flex items-center justify-center py-20"><Spinner size={24}/></div>;
+  if(err)return<div className="p-4"><Alert type="error">{err}</Alert></div>;
+  if(!athlete)return null;
+
+  return<>
+    {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={feed}/>}
+    {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={false} onSave={saveAthlete}/>}
+    {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={false} onAdd={addSchool} onUpdate={updateSchool} onRemove={removeSchool}/>}
+    <div className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-2 px-4" style={{background:`${C.card}F8`,borderTop:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
+      {[{id:"dashboard",label:"Home",Ic:Home},{id:"athlete",label:"Athlete",Ic:UserIcon},{id:"schools",label:"Schools",Ic:School}].map(({id,label,Ic})=>{const active=tab===id;return<button key={id} onClick={()=>setTab(id)} className="flex flex-col items-center gap-1 px-8 py-2 rounded-xl" style={{color:active?C.fuchsia:C.muted,background:active?C.fuchsia+"18":"transparent",cursor:"pointer"}}><Ic size={20}/><span style={{fontSize:10,fontWeight:600}}>{label}</span></button>;})}
+    </div>
+  </>;
+}
+
+// ── LOADING SCREEN ────────────────────────────────────────────────────────────
+function LoadingScreen({msg="Loading portal…"}){
+  return<div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{background:C.bg}}>
+    <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`}}><Trophy size={26} color="white"/></div>
+    <Spinner size={22}/>
+    <div style={{color:C.muted,fontSize:12}}>{msg}</div>
+  </div>;
 }
 
 // ── APP ROOT ──────────────────────────────────────────────────────────────────
 function App(){
-  const[user,setUser]=useState(null);
-  const[tab,setTab]=useState("dashboard");
-  const[athletes,setAthletes]=useState(SEED_ATHLETES);
-  const[boards,setBoards]=useState(SEED_BOARDS);
-  // Track which users have completed onboarding (keyed by email)
-  const[onboarded,setOnboarded]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem("se-onboarded")||"{}");}catch{return{};}
-  });
+  const[cfg,setCfg]=useState(null);
+  const[cfgLoaded,setCfgLoaded]=useState(false);
+  const[sb,setSb]=useState(null);
+  const[session,setSession]=useState(undefined);// undefined=loading, null=no session
+  const[profile,setProfile]=useState(null);
+  const[onboarded,setOnboarded]=useState({});
+  const[showOnboarding,setShowOnboarding]=useState(false);
+  const[onboardAthlete,setOnboardAthlete]=useState(null);
+  const[onboardBoard,setOnboardBoard]=useState([]);
 
-  const isStaff=user?.role==="staff";
-  const athlete=user&&!isStaff?athletes[user.athleteId]:null;
-  const board=user&&!isStaff?boards[user.athleteId]||[]:[];
-  const feed=user&&!isStaff?SEED_FEED[user.athleteId]||[]:[];
-  const showOnboarding=user&&!isStaff&&!onboarded[user.email];
+  // Load config from localStorage
+  useEffect(()=>{
+    try{const c=JSON.parse(localStorage.getItem(CFG_KEY)||"null");if(c)setCfg(c);}catch{}
+    try{const o=JSON.parse(localStorage.getItem(ONBOARD_KEY)||"{}");setOnboarded(o);}catch{}
+    setCfgLoaded(true);
+  },[]);
 
-  const completeOnboarding=()=>{
-    const updated={...onboarded,[user.email]:true};
-    setOnboarded(updated);
-    try{localStorage.setItem("se-onboarded",JSON.stringify(updated));}catch{}
+  // Init Supabase when config ready
+  useEffect(()=>{
+    if(!cfg||!window.supabase)return;
+    const client=window.supabase.createClient(cfg.url,cfg.key);
+    setSb(client);
+    client.auth.getSession().then(({data:{session}})=>setSession(session));
+    const{data:{subscription}}=client.auth.onAuthStateChange((_,s)=>setSession(s));
+    return()=>subscription?.unsubscribe();
+  },[cfg]);
+
+  // Load profile when session changes
+  useEffect(()=>{
+    if(!sb||!session){setProfile(null);return;}
+    sb.from("profiles").select("*").eq("id",session.user.id).single().then(({data})=>setProfile(data));
+  },[session,sb]);
+
+  // Check onboarding trigger for parents
+  useEffect(()=>{
+    if(!profile||!session||profile.role==="staff")return;
+    const email=session.user.email;
+    if(!onboarded[email]&&profile.athlete_id){
+      // Load athlete + board for onboarding preview
+      sb.from("athletes").select("*").eq("id",profile.athlete_id).single().then(({data:ath})=>{
+        if(ath){
+          sb.from("school_boards").select("*").eq("athlete_id",profile.athlete_id).limit(5).then(({data:bd})=>{
+            setOnboardAthlete(ath);
+            setOnboardBoard(bd||[]);
+            setShowOnboarding(true);
+          });
+        }
+      });
+    }
+  },[profile]);
+
+  const saveCfg=(url,key)=>{
+    const c={url,key};setCfg(c);
+    try{localStorage.setItem(CFG_KEY,JSON.stringify(c));}catch{}
   };
 
-  const updateAthlete=(id,u)=>setAthletes(a=>({...a,[id]:{...a[id],...u}}));
-  const updateBoard=(id,b)=>setBoards(b2=>({...b2,[id]:b}));
+  const clearCfg=()=>{
+    setCfg(null);setSb(null);setSession(undefined);setProfile(null);
+    try{localStorage.removeItem(CFG_KEY);}catch{}
+  };
 
-  if(!user) return <LoginScreen onLogin={u=>{setUser(u);setTab("dashboard");}}/>;
+  const signOut=async()=>{
+    await sb?.auth.signOut();
+  };
 
-  // Show onboarding flow for first-time parent logins
-  if(showOnboarding) return <OnboardingFlow user={user} athlete={athlete} board={board} onComplete={completeOnboarding}/>;
+  const completeOnboarding=()=>{
+    const email=session?.user?.email;
+    if(!email)return;
+    const updated={...onboarded,[email]:true};
+    setOnboarded(updated);setShowOnboarding(false);
+    try{localStorage.setItem(ONBOARD_KEY,JSON.stringify(updated));}catch{}
+  };
+
+  const displayName=profile?.display_name||session?.user?.email||"";
+  const isStaff=profile?.role==="staff";
+
+  // Loading states
+  if(!cfgLoaded)return<LoadingScreen/>;
+  if(!cfg)return<SetupScreen onSave={saveCfg}/>;
+  if(!sb||session===undefined||(!profile&&session))return<LoadingScreen msg="Connecting…"/>;
+  if(!session)return<AuthScreen sb={sb}/>;
+
+  // Onboarding
+  if(showOnboarding&&onboardAthlete)return<OnboardingFlow userName={displayName} athlete={onboardAthlete} board={onboardBoard} onComplete={completeOnboarding}/>;
 
   return<div style={{minHeight:"100vh",background:C.bg}}>
+    {/* Topbar */}
     <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3" style={{background:`${C.card}F2`,borderBottom:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
-      <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`}}><Trophy size={17} color="white"/></div><div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:C.text,letterSpacing:1,lineHeight:1}}>SCHOLARS ELITE</div><div style={{fontSize:10,color:isStaff?C.fuchsia:C.muted,fontWeight:isStaff?700:400}}>{isStaff?"STAFF VIEW":user.name}</div></div></div>
-      <button onClick={()=>{setUser(null);setTab("dashboard");}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold" style={{color:C.muted,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>{e.currentTarget.style.background=C.border;e.currentTarget.style.color=C.text;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.muted;}}><LogOut size={13}/>Sign Out</button>
+      <div className="flex items-center gap-2.5">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`}}><Trophy size={17} color="white"/></div>
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:16,fontWeight:800,color:C.text,letterSpacing:1,lineHeight:1}}>SCHOLARS ELITE</div>
+          <div style={{fontSize:10,color:isStaff?C.fuchsia:C.muted,fontWeight:isStaff?700:400}}>{isStaff?"STAFF VIEW":displayName}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={clearCfg} title="Disconnect database" style={{color:C.muted,cursor:"pointer",padding:4}}><Database size={14}/></button>
+        <button onClick={signOut} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold" style={{color:C.muted,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>{e.currentTarget.style.background=C.border;e.currentTarget.style.color=C.text;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.muted;}}><LogOut size={13}/>Sign Out</button>
+      </div>
     </div>
-    <div style={{maxWidth:560,margin:"0 auto",padding:"20px 16px 100px"}}>
-      {isStaff?<StaffView athletes={athletes} boards={boards} onUpdateAthlete={updateAthlete} onUpdateBoard={updateBoard}/>:<>{tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={feed}/>}{tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={false} onSave={u=>updateAthlete(user.athleteId,u)}/>}{tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={false} onAdd={s=>updateBoard(user.athleteId,[...board,s])} onUpdate={s=>updateBoard(user.athleteId,board.map(b=>b.id===s.id?s:b))} onRemove={id=>updateBoard(user.athleteId,board.filter(b=>b.id!==id))}/>}</>}
+
+    {/* Main content */}
+    <div style={{maxWidth:560,margin:"0 auto",padding:"20px 16px "+(isStaff?"40px":"100px")}}>
+      {isStaff
+        ?<StaffView sb={sb} session={session} displayName={displayName}/>
+        :<ParentView sb={sb} session={session} profile={profile} displayName={displayName}/>
+      }
     </div>
-    {!isStaff&&<div className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-2 px-4" style={{background:`${C.card}F8`,borderTop:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>{[{id:"dashboard",label:"Home",Ic:Home},{id:"athlete",label:"Athlete",Ic:UserIcon},{id:"schools",label:"Schools",Ic:School}].map(({id,label,Ic})=>{const active=tab===id;return<button key={id} onClick={()=>setTab(id)} className="flex flex-col items-center gap-1 px-8 py-2 rounded-xl" style={{color:active?C.fuchsia:C.muted,background:active?C.fuchsia+"18":"transparent",cursor:"pointer"}}><Ic size={20}/><span style={{fontSize:10,fontWeight:600}}>{label}</span></button>;})}
-    </div>}
   </div>;
 }
 

@@ -1151,246 +1151,10 @@ function CalendarView(){
 }
 
 // ── PARENT VIEW ───────────────────────────────────────────────────────────────
-// ── PROGRESS TRACKER ─────────────────────────────────────────────────────────
-function calcProgress(athlete, board) {
-  const checks = [
-    { key:"gpa",     label:"GPA entered",            pts:15, icon:"📚", done:!!(athlete.gpa&&athlete.gpa.trim()) },
-    { key:"film",    label:"Highlight film linked",  pts:20, icon:"🎬", done:!!(athlete.highlight_link&&athlete.highlight_link.trim()) },
-    { key:"board3",  label:"3+ schools on board",    pts:20, icon:"🏫", done:board.length>=3 },
-    { key:"scored",  label:"Fit factors rated",      pts:15, icon:"📊", done:board.some(s=>Object.values(s.factors||{}).some(v=>v>0)) },
-    { key:"story",   label:"Recruiting story written",pts:15, icon:"✍️", done:!!(athlete.recruiting_story&&athlete.recruiting_story.trim()) },
-    { key:"offer",   label:"Scholarship offer logged",pts:15, icon:"🎉", done:(athlete.offers||[]).length>0 },
-  ];
-  const total = checks.reduce((s,c)=>s+(c.done?c.pts:0), 0);
-  const max   = checks.reduce((s,c)=>s+c.pts, 0);
-  return { checks, total, max, pct: Math.round((total/max)*100) };
-}
-
-function PlacementReport({athlete, board, onClose}) {
-  const scored = [...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score);
-  const pl = athlete.player_level||athlete.playerLevel||"PL3";
-  const plN = parseInt(pl.replace("PL",""));
-  const a1a2 = scored.filter(s=>["A1","A2"].includes(getBand(s.score).band));
-  const b1b2 = scored.filter(s=>["B1","B2"].includes(getBand(s.score).band));
-  const low  = scored.filter(s=>["C","D"].includes(getBand(s.score).band));
-  return(
-    <div className="fixed inset-0 z-50 flex flex-col" style={{background:C.bg,overflowY:"auto"}}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 sticky top-0 z-10" style={{background:`${C.card}F8`,borderBottom:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
-        <div>
-          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:800,color:C.text,letterSpacing:1}}>PLACEMENT REPORT</div>
-          <div style={{color:C.muted,fontSize:11}}>{athlete.name} · Class of {athlete.grad_year||athlete.gradYear}</div>
-        </div>
-        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><X size={22}/></button>
-      </div>
-
-      <div style={{maxWidth:560,margin:"0 auto",padding:"20px 16px 40px",width:"100%"}}>
-        {/* Athlete summary card */}
-        <div className="rounded-2xl p-5 mb-5 relative overflow-hidden" style={{background:`linear-gradient(135deg,${C.primary}90,${C.fuchsia}50)`,border:`1px solid ${C.primary}60`}}>
-          <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)",backgroundSize:"12px 12px"}}/>
-          <div className="relative">
-            <div style={{color:"rgba(255,255,255,0.55)",fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Full Placement Report</div>
-            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:"white",lineHeight:1.1,marginBottom:6}}>{athlete.name}</div>
-            <div className="flex flex-wrap gap-2">
-              <PLBadge level={pl}/>
-              <Badge color={C.gold}>GPA {athlete.gpa}</Badge>
-              <Badge color={C.sub}>{athlete.position} · {athlete.height}</Badge>
-            </div>
-            {athlete.recruiting_story&&<p style={{color:"rgba(255,255,255,0.65)",fontSize:12,fontStyle:"italic",lineHeight:1.5,marginTop:12}}>"{athlete.recruiting_story}"</p>}
-          </div>
-        </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3 mb-5">
-          {[
-            {label:"Total Schools", val:board.length,          col:C.primary},
-            {label:"Priority Fits", val:a1a2.length,           col:C.green},
-            {label:"Active Offers", val:(athlete.offers||[]).length, col:C.gold},
-          ].map(({label,val,col})=>(
-            <div key={label} className="rounded-xl p-4 text-center" style={{background:C.card,border:`1px solid ${C.border}`}}>
-              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:30,fontWeight:800,color:col,lineHeight:1}}>{val}</div>
-              <div style={{color:C.muted,fontSize:10,marginTop:3}}>{label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Priority schools */}
-        {a1a2.length>0&&(
-          <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.green}44`}}>
-            <div style={{color:C.green,fontSize:10,letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>🏆 Priority Push Schools (A1–A2)</div>
-            {a1a2.map((s,i)=>{
-              const{color}=getBand(s.score);const tN=parseInt((s.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,s.score);
-              return<div key={s.id} className="flex items-center gap-3 mb-3 last:mb-0 p-3 rounded-xl" style={{background:C.green+"10",border:`1px solid ${C.green}22`}}>
-                <ScoreRing score={s.score} size={52}/>
-                <div className="flex-1 min-w-0">
-                  <div style={{color:C.text,fontWeight:700,fontSize:14}}>{s.school}</div>
-                  <div style={{color:C.muted,fontSize:11,marginBottom:4}}>{s.conference}</div>
-                  <div className="flex flex-wrap gap-1"><TierBadge tier={s.tier||"T3"}/><Badge color={color}>{rec}</Badge>{(s.has_offer||s.hasOffer)&&<Badge color={C.green}>✓ Offer</Badge>}</div>
-                </div>
-              </div>;
-            })}
-          </div>
-        )}
-
-        {/* Real fits */}
-        {b1b2.length>0&&(
-          <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
-            <div style={{color:C.gold,fontSize:10,letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:12}}>📋 Real Fits (B1–B2)</div>
-            {b1b2.map(s=>{
-              const{color}=getBand(s.score);const tN=parseInt((s.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,s.score);
-              return<div key={s.id} className="flex items-center gap-3 mb-3 last:mb-0 p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
-                <ScoreRing score={s.score} size={48}/>
-                <div className="flex-1 min-w-0">
-                  <div style={{color:C.text,fontWeight:700,fontSize:13}}>{s.school}</div>
-                  <div style={{color:C.muted,fontSize:11,marginBottom:3}}>{s.conference}</div>
-                  <div className="flex flex-wrap gap-1"><TierBadge tier={s.tier||"T3"}/><Badge color={color}>{rec}</Badge></div>
-                </div>
-              </div>;
-            })}
-          </div>
-        )}
-
-        {/* Factor strength summary */}
-        {board.length>0&&(
-          <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
-            <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:14}}>Average Factor Scores Across All Schools</div>
-            {Object.entries(FACTOR_LABELS).map(([k,label])=>{
-              const avg=Math.round(board.reduce((s,b)=>s+((b.factors||{})[k]||0),0)/board.length);
-              const col=avg>=8?C.green:avg>=6?C.gold:avg>=4?"#EA7316":C.red;
-              return<div key={k} className="mb-3 last:mb-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span style={{color:C.sub,fontSize:12}}>{label}</span>
-                  <span style={{color:col,fontSize:12,fontWeight:700}}>{avg}/10</span>
-                </div>
-                <div className="h-2 rounded-full" style={{background:C.border}}>
-                  <div style={{width:`${avg*10}%`,height:"100%",borderRadius:9999,background:`linear-gradient(90deg,${C.primary},${col})`,transition:"width 0.4s"}}/>
-                </div>
-              </div>;
-            })}
-          </div>
-        )}
-
-        {/* Strengths + development */}
-        <div className="grid grid-cols-1 gap-3 mb-4">
-          {[
-            {label:"💪 Strengths",    val:athlete.strengths,         col:C.green},
-            {label:"📈 Development",  val:athlete.development_needs, col:C.gold},
-          ].filter(i=>i.val).map(item=>(
-            <div key={item.label} className="rounded-xl p-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
-              <div style={{color:item.col,fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>{item.label}</div>
-              <div style={{color:C.sub,fontSize:13,lineHeight:1.5}}>{item.val}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Low priority note */}
-        {low.length>0&&(
-          <div className="rounded-xl p-4" style={{background:C.red+"10",border:`1px solid ${C.red}22`}}>
-            <div style={{color:C.red,fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>⚠️ Low Priority ({low.length} school{low.length!==1?"s":""})</div>
-            <div style={{color:C.muted,fontSize:12}}>{low.map(s=>s.school).join(", ")} — not active placement targets at current profile level.</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ProgressTracker({athlete, board, onViewReport}) {
-  const {checks, total, max, pct} = calcProgress(athlete, board);
-  const unlocked = pct >= 80;
-  const {color} = getBand(total);
-  const ringColor = pct>=80?C.green:pct>=50?C.gold:C.primary;
-  const r=42,circ=2*Math.PI*r,dash=circ*(pct/100);
-
-  return<div>
-    {/* Hero ring */}
-    <div className="rounded-2xl p-5 mb-4 flex items-center gap-5" style={{background:C.card,border:`1px solid ${unlocked?C.green:C.border}`,transition:"border-color 0.5s"}}>
-      <div className="relative flex-shrink-0" style={{width:96,height:96}}>
-        <svg width={96} height={96} style={{transform:"rotate(-90deg)"}}>
-          <circle cx={48} cy={48} r={r} fill="none" stroke={C.border} strokeWidth={6}/>
-          <circle cx={48} cy={48} r={r} fill="none" stroke={ringColor} strokeWidth={6} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transition:"stroke-dasharray 0.6s ease,stroke 0.4s"}}/>
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:ringColor,lineHeight:1}}>{pct}%</span>
-          <span style={{color:C.muted,fontSize:9,marginTop:1}}>complete</span>
-        </div>
-      </div>
-      <div className="flex-1">
-        <div style={{fontFamily:"'Barlow Condensed',sans-serif",color:C.text,fontSize:20,fontWeight:800,lineHeight:1.1,marginBottom:6}}>
-          {pct>=100?"Profile Complete ✅":pct>=80?"Report Unlocked 🏆":pct>=50?"Almost There…":"Build Your Profile"}
-        </div>
-        <div style={{color:C.muted,fontSize:12,lineHeight:1.5}}>
-          {pct>=80
-            ?"Your full placement intelligence report is ready."
-            :`Complete ${100-pct}% more to unlock your full placement report.`}
-        </div>
-        {!unlocked&&(
-          <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{background:C.border}}>
-            <div className="h-full rounded-full transition-all duration-500" style={{width:`${pct}%`,background:`linear-gradient(90deg,${C.primary},${ringColor})`}}/>
-          </div>
-        )}
-      </div>
-    </div>
-
-    {/* Unlock CTA */}
-    {unlocked?(
-      <button onClick={onViewReport} className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 mb-5"
-        style={{background:`linear-gradient(135deg,${C.green},#16A34A)`,color:"white",cursor:"pointer",boxShadow:`0 8px 24px ${C.green}40`}}>
-        🏆 View Full Placement Report →
-      </button>
-    ):(
-      <div className="rounded-xl p-4 mb-5 flex items-center gap-3" style={{background:C.card,border:`1px dashed ${C.border}`}}>
-        <Lock size={16} style={{color:C.muted,flexShrink:0}}/>
-        <div style={{color:C.muted,fontSize:13}}>Complete {80-pct>0?`${80-pct}% more`:"your profile"} to unlock the full placement report. ({total}/{max} pts)</div>
-      </div>
-    )}
-
-    {/* Checklist */}
-    <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Profile Checklist</div>
-    <div className="flex flex-col gap-2">
-      {checks.map(item=>(
-        <div key={item.key} className="flex items-center gap-3 p-3.5 rounded-xl transition-all" style={{background:item.done?C.green+"12":C.card,border:`1px solid ${item.done?C.green+"44":C.border}`}}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{background:item.done?C.green+"22":C.card2,border:`1px solid ${item.done?C.green+"44":C.border}`}}>
-            {item.done?<Check size={18} style={{color:C.green}}/>:<span style={{fontSize:18}}>{item.icon}</span>}
-          </div>
-          <div className="flex-1">
-            <div style={{color:item.done?C.green:C.text,fontWeight:600,fontSize:13,textDecoration:item.done?"line-through":"none"}}>{item.label}</div>
-            <div style={{color:C.muted,fontSize:11,marginTop:1}}>+{item.pts} points</div>
-          </div>
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black" style={{background:item.done?C.green+"22":C.card2,color:item.done?C.green:C.muted,border:`1px solid ${item.done?C.green+"44":C.border}`}}>
-            {item.done?"✓":`+${item.pts}`}
-          </div>
-        </div>
-      ))}
-    </div>
-
-    {/* What unlocks at 80% */}
-    {!unlocked&&(
-      <div className="rounded-2xl p-5 mt-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
-        <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Unlock at 80%</div>
-        {[
-          {icon:"📊",label:"Full placement score breakdown",sub:"All schools ranked with detailed factor analysis"},
-          {icon:"🏆",label:"Priority push schools highlighted",sub:"A1–A2 targets your staff should pursue now"},
-          {icon:"📈",label:"Average factor strength report",sub:"See your athlete's profile strengths across all boards"},
-          {icon:"📋",label:"Complete recruiting summary",sub:"One shareable view of your entire recruiting picture"},
-        ].map((i,idx)=>(
-          <div key={idx} className="flex items-start gap-3 mb-3 last:mb-0">
-            <div className="text-xl flex-shrink-0 mt-0.5">{i.icon}</div>
-            <div><div style={{color:C.text,fontSize:13,fontWeight:600}}>{i.label}</div><div style={{color:C.muted,fontSize:11,marginTop:1}}>{i.sub}</div></div>
-          </div>
-        ))}
-      </div>
-    )}
-  </div>;
-}
-
-function ParentView({sb,session,profile,displayName,onShowOnboarding}){
-  const[athlete,setAthlete]=useState(null);const[board,setBoard]=useState([]);const[feed,setFeed]=useState([]);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");const[showReport,setShowReport]=useState(false);
-
+function ParentView({sb,session,profile,displayName}){
+  const[athlete,setAthlete]=useState(null);const[board,setBoard]=useState([]);const[feed,setFeed]=useState([]);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");
   const athleteId=profile?.athlete_id;
-
   useEffect(()=>{if(athleteId)load();},[athleteId]);
-
   const load=async()=>{
     setLoading(true);
     const{data:a,error}=await sb.from("athletes").select("*").eq("id",athleteId).single();
@@ -1402,71 +1166,72 @@ function ParentView({sb,session,profile,displayName,onShowOnboarding}){
     setFeed(fd||[]);
     setLoading(false);
   };
-
   const logActivity=async(type,message,meta={})=>{
     if(!athleteId)return;
     await sb.from("activity_feed").insert({athlete_id:athleteId,actor_id:session.user.id,actor_name:displayName||session.user.email,type,message,meta});
     const{data}=await sb.from("activity_feed").select("*").eq("athlete_id",athleteId).order("created_at",{ascending:false}).limit(10);
     setFeed(data||[]);
   };
-
   const saveAthlete=async(updated)=>{
     const{error}=await sb.from("athletes").update({gpa:updated.gpa,height:updated.height,strengths:updated.strengths,development_needs:updated.development_needs,recruiting_story:updated.recruiting_story,offers:updated.offers,highlight_link:updated.highlight_link,visibility_score:updated.visibility_score}).eq("id",athleteId);
     if(!error){setAthlete(a=>({...a,...updated}));await logActivity("profile_updated","Family updated athlete profile");}
   };
-
   const addSchool=async(s)=>{
     const{data,error}=await sb.from("school_boards").insert({...s,athlete_id:athleteId,created_by:session.user.id,updated_by:session.user.id}).select().single();
     if(!error&&data){setBoard(b=>[...b,data]);await logActivity("school_added",`Added ${s.school} to board (Score: ${calcScore(s.factors)}/100)`,{school:s.school});}
   };
-
   const updateSchool=async(s)=>{
     const{error}=await sb.from("school_boards").update({...s,updated_by:session.user.id}).eq("id",s.id);
     if(!error){setBoard(b=>b.map(e=>e.id===s.id?{...e,...s}:e));await logActivity("score_updated",`Updated fit factors for ${s.school}`,{school:s.school,score:calcScore(s.factors||{})});}
   };
-
   const removeSchool=async(id)=>{
     const s=board.find(e=>e.id===id);
     await sb.from("school_boards").delete().eq("id",id);
     setBoard(b=>b.filter(e=>e.id!==id));
     if(s)await logActivity("school_removed",`Removed ${s.school} from board`);
   };
-
   if(loading)return<div className="flex items-center justify-center py-20"><Spinner size={24}/></div>;
   if(err)return<div className="p-4"><Alert type="error">{err}</Alert></div>;
   if(!athlete)return null;
+  // For progress dot on nav
+  const PROG_ITEMS=[
+    !!(athlete.gpa&&athlete.gpa!==""),
+    !!(athlete.highlight_link||athlete.highlightLink),
+    board.length>=3,
+    !!(athlete.recruiting_story||athlete.recruitingStory),
+    !!(athlete.strengths&&athlete.strengths!==""),
+    (athlete.visibility_score||0)>0,
+    (athlete.offers||[]).length>0||board.some(s=>s.has_offer||s.hasOffer),
+  ];
+  const progPts=[15,20,20,15,10,10,10];
+  const progEarned=PROG_ITEMS.reduce((s,done,i)=>s+(done?progPts[i]:0),0);
+  const progMax=progPts.reduce((a,b)=>a+b,0);
+  const progPct=Math.round((progEarned/progMax)*100);
 
   return<>
     {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={feed}/>}
     {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={false} onSave={saveAthlete}/>}
     {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={false} onAdd={addSchool} onUpdate={updateSchool} onRemove={removeSchool}/>}
-    {showReport&&<PlacementReport athlete={athlete} board={board} onClose={()=>setShowReport(false)}/>}
-    {!showReport&&<>
-    {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={feed}/>}
-    {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={false} onSave={saveAthlete}/>}
-    {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={false} onAdd={addSchool} onUpdate={updateSchool} onRemove={removeSchool}/>}
+    {tab==="progress"&&<ProgressView athlete={athlete} board={board}/>}
     {tab==="compare"&&<CompareView athlete={athlete} board={board}/>}
     {tab==="calendar"&&<CalendarView/>}
-    {tab==="progress"&&<ProgressTracker athlete={athlete} board={board} onViewReport={()=>setShowReport(true)}/>}
     <div className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-1.5 px-1" style={{background:`${C.card}F8`,borderTop:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
       {[
         {id:"dashboard",label:"Home",    Ic:Home},
+        {id:"athlete",  label:"Athlete", Ic:UserIcon},
         {id:"schools",  label:"Schools", Ic:School},
+        {id:"progress", label:"Progress",Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,dot:progPct<80&&progPct>0},
         {id:"compare",  label:"Compare", Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>},
-        {id:"calendar",label:"Calendar",Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>},
-        {id:"progress", label:"Progress", Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>},
-      ].map(({id,label,Ic})=>{
+        {id:"calendar", label:"Calendar",Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>},
+      ].map(({id,label,Ic,dot})=>{
         const active=tab===id;
-        const {pct}=calcProgress(athlete,board);
-        const showDot=id==="progress"&&pct<80&&pct>0;
-        return<button key={id} onClick={()=>setTab(id)} className="relative flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl" style={{color:active?C.fuchsia:C.muted,background:active?C.fuchsia+"18":"transparent",cursor:"pointer"}}>
-          <Ic size={18}/>
+        return<button key={id} onClick={()=>setTab(id)} className="relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl" style={{color:active?C.fuchsia:C.muted,background:active?C.fuchsia+"18":"transparent",cursor:"pointer",minWidth:44}}>
+          <Ic size={17}/>
           <span style={{fontSize:9,fontWeight:600}}>{label}</span>
-          {showDot&&<div className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{background:C.gold}}/>}
+          {dot&&<div className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full" style={{background:C.gold}}/>}
         </button>;
       })}
     </div>
-    </>}
   </>;
 }
 

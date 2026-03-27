@@ -703,6 +703,7 @@ function SchoolBoard({athlete,board,isStaff,onAdd,onUpdate,onRemove}){
 // ── STAFF VIEW ────────────────────────────────────────────────────────────────
 function StaffView({sb,session,displayName}){
   const[athletes,setAthletes]=useState([]);const[boards,setBoards]=useState({});const[feed,setFeed]=useState({});const[selected,setSelected]=useState(null);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");
+  const[showCommit,setShowCommit]=useState(false);const[showMessages,setShowMessages]=useState(false);
 
   useEffect(()=>{load();},[]);
 
@@ -779,8 +780,6 @@ function StaffView({sb,session,displayName}){
     const board=boards[selected]||[];
     const athleteFeed=feed[selected]||[];
     if(!athlete)return null;
-    const[showCommit,setShowCommit]=useState(false);
-    const[showMessages,setShowMessages]=useState(false);
     const isCommitted=athlete.status==="committed"||athlete.status==="signed";
     return<div>
       <button onClick={()=>setSelected(null)} className="flex items-center gap-2 mb-4 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><ArrowLeft size={14}/>Roster</button>
@@ -855,7 +854,7 @@ function StaffView({sb,session,displayName}){
         <div className="flex flex-col gap-2">
           {teamAthletes.map(a=>{
             const ab=boards[a.id]||[];const scored=ab.map(s=>calcScore(s.factors||{}));const top=scored.length?Math.max(...scored):0;const{color}=getBand(top);const p1=ab.filter(s=>getBand(calcScore(s.factors||{})).band==="A1").length;
-            return<button key={a.id} onClick={()=>{setSelected(a.id);setTab("dashboard");loadFeed(a.id);}} className="flex items-center gap-3 p-3.5 rounded-xl text-left w-full" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=tc} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+            return<button key={a.id} onClick={()=>{setSelected(a.id);setTab("dashboard");loadFeed(a.id);setShowCommit(false);setShowMessages(false);}} className="flex items-center gap-3 p-3.5 rounded-xl text-left w-full" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=tc} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black flex-shrink-0 text-xs" style={{background:tc+"22",color:tc,border:`1px solid ${tc}44`}}>{a.name.split(" ").map(n=>n[0]).join("")}</div>
               <div className="flex-1 min-w-0">
                 <div style={{color:C.text,fontWeight:700,fontSize:13}}>{a.name}</div>

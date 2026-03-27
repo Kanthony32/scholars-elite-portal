@@ -57,3 +57,31 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- Verify
 SELECT team, count(*) as players FROM athletes GROUP BY team ORDER BY team;
+
+-- ── STAFF MESSAGES TABLE (for staff → family messaging) ──────────────────────
+create table if not exists public.staff_messages (
+  id          uuid default gen_random_uuid() primary key,
+  athlete_id  text references athletes(id) on delete cascade not null,
+  sender_id   uuid references auth.users(id),
+  sender_name text,
+  message     text not null,
+  visible_to_family boolean default true,
+  created_at  timestamptz default now()
+);
+
+alter table public.staff_messages enable row level security;
+
+drop policy if exists "messages: staff insert"  on staff_messages;
+drop policy if exists "messages: staff select"  on staff_messages;
+drop policy if exists "messages: parent select" on staff_messages;
+
+create policy "messages: staff insert" on staff_messages for insert with check (
+  public.get_my_role() = 'staff'
+);
+create policy "messages: staff select" on staff_messages for select using (
+  public.get_my_role() = 'staff'
+);
+create policy "messages: parent select" on staff_messages for select using (
+  (select athlete_id from profiles where id = auth.uid()) = staff_messages.athlete_id
+  and visible_to_family = true
+);

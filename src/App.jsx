@@ -1,0 +1,1578 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+
+// hooks imported above
+
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const CFG_KEY      = "se-supabase-cfg-v2";
+const SUPABASE_URL = "https://bufcpjbyhbhtbywuowqh.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1ZmNwamJ5aGJodGJ5d3Vvd3FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDg4NDksImV4cCI6MjA5MDAyNDg0OX0.MxlFJchQ2vVifF8WKMwTfba_O1DJrg8UBIB5sxkINYw";
+const ONBOARD_KEY  = "se-onboarded-v2";
+const STAFF_CODE   = "SCHOLARS-STAFF-2026";
+
+// ── BRAND ─────────────────────────────────────────────────────────────────────
+const C={bg:"#09060F",card:"#120D1E",card2:"#1C1530",border:"#2A1D45",
+  primary:"#602F96",fuchsia:"#C233BF",red:"#DD1026",gold:"#F5A623",
+  green:"#22C55E",text:"#EDE8F8",sub:"#A898C8",muted:"#6B5E88"};
+
+// ── SCORING ───────────────────────────────────────────────────────────────────
+const WEIGHTS={bbLevel:2.5,opportunity:2.0,athletic:1.5,skill:1.5,academic:1.0,style:0.5,geo:0.5,relationship:0.5};
+const MAX_PTS={bbLevel:25,opportunity:20,athletic:15,skill:15,academic:10,style:5,geo:5,relationship:5};
+const FACTOR_LABELS={bbLevel:"BB Level Match",opportunity:"Opportunity / Role Fit",athletic:"Athletic / Physical Fit",skill:"Skill Fit",academic:"Academic Fit",style:"Style of Play Fit",geo:"Geographic / Family Fit",relationship:"Relationship Level"};
+const TIER_COLOR={T1:"#DD1026",T2:"#EA7316",T3:"#F5A623",T4:"#22C55E",T5:"#6B5E88",T6:"#4B5563"};
+const TIER_LABEL={T1:"Elite National",T2:"Major / P4",T3:"High Mid-Major",T4:"True Mid-Major",T5:"Low-Major D-I",T6:"Fringe D-I"};
+const PL_LABEL={PL1:"Elite HM",PL2:"P4 Caliber",PL3:"High Mid-Major",PL4:"True Mid-Major",PL5:"Low-Major",PL6:"D-II / Dev"};
+const PL_COLOR={PL1:"#DD1026",PL2:"#EA7316",PL3:"#F5A623",PL4:"#22C55E",PL5:"#6B5E88",PL6:"#4B5563"};
+const TIERS=["T1","T2","T3","T4","T5","T6"];
+const PLs=["PL1","PL2","PL3","PL4","PL5","PL6"];
+const SCHOOL_DB=[{school:"UConn",conference:"Big East",tier:"T1"},{school:"South Carolina",conference:"SEC",tier:"T1"},{school:"LSU",conference:"SEC",tier:"T1"},{school:"Tennessee",conference:"SEC",tier:"T1"},{school:"Notre Dame",conference:"ACC",tier:"T1"},{school:"Iowa",conference:"Big Ten",tier:"T1"},{school:"Oregon",conference:"Big Ten",tier:"T2"},{school:"Maryland",conference:"Big Ten",tier:"T2"},{school:"Florida State",conference:"ACC",tier:"T2"},{school:"Michigan",conference:"Big Ten",tier:"T2"},{school:"Ole Miss",conference:"SEC",tier:"T2"},{school:"Arizona",conference:"Big 12",tier:"T2"},{school:"James Madison",conference:"Sun Belt",tier:"T3"},{school:"FGCU",conference:"ASUN",tier:"T3"},{school:"Gonzaga",conference:"WCC",tier:"T3"},{school:"Drake",conference:"MVC",tier:"T3"},{school:"Belmont",conference:"MVC",tier:"T3"},{school:"High Point",conference:"Big South",tier:"T3"},{school:"Campbell",conference:"Big South",tier:"T4"},{school:"Jacksonville",conference:"ASUN",tier:"T4"},{school:"North Florida",conference:"ASUN",tier:"T4"},{school:"Stetson",conference:"ASUN",tier:"T4"}];
+
+function calcScore(f={}){return Math.min(100,Math.round(Object.keys(WEIGHTS).reduce((s,k)=>s+(f[k]||0)*WEIGHTS[k],0)));}
+function getBand(score){if(score>=90)return{band:"A1",color:"#16A34A"};if(score>=80)return{band:"A2",color:"#22C55E"};if(score>=70)return{band:"B1",color:"#F5A623"};if(score>=60)return{band:"B2",color:"#EA7316"};if(score>=50)return{band:"C",color:"#6B5E88"};return{band:"D",color:"#DD1026"};}
+function getRecruit(plNum,tNum,score){const gap=tNum-plNum;if(gap<=-2)return"Dream";if(gap===-1)return"Reach";if(gap===0)return score>=80?"Strong Fit":"Target";if(gap===1)return score>=75?"Target":"Stretch";return"Likely Landing";}
+
+// ── ICONS ─────────────────────────────────────────────────────────────────────
+const Ic=(d,opts={})=>({size=16,color="currentColor",...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>{opts.extra}{Array.isArray(d)?d.map((x,i)=>React.cloneElement(x,{key:i})):<path d={d}/>}</svg>;
+const Trophy=({size=16,color="currentColor",...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+const LogOut=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+const Plus=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+const Edit3=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
+const X=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+const Search=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+const School=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M14 22v-4a2 2 0 1 0-4 0v4"/><path d="m18 10 3.447 1.724a1 1 0 0 1 .553.894V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7.382a1 1 0 0 1 .553-.894L6 10"/><path d="M18 5v17"/><path d="m4 6 8-4 8 4"/><path d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg>;
+const Sliders=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>;
+const ArrowLeft=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>;
+const ArrowRight=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>;
+const Trash2=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
+const ChevronRight=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="9 18 15 12 9 6"/></svg>;
+const Home=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
+const Lock=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+const Eye=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+const EyeOff=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+const AlertCircle=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
+const Check=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="20 6 9 13.5 4 9"/></svg>;
+const BarChart3=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>;
+const Zap=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
+const UserIcon=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+const Database=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
+const RefreshCw=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>;
+const Activity=({size=16,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+
+// ── UI ATOMS ──────────────────────────────────────────────────────────────────
+function Badge({color,children}){return<span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold" style={{background:color+"22",color,border:`1px solid ${color}44`}}>{children}</span>;}
+function TierBadge({tier}){return<Badge color={TIER_COLOR[tier]}>{tier}·{TIER_LABEL[tier]}</Badge>;}
+function PLBadge({level}){return<Badge color={PL_COLOR[level]}>{level}·{PL_LABEL[level]}</Badge>;}
+function ScorePill({score}){const{band,color}=getBand(score);return<span className="inline-flex items-center gap-1.5 rounded-full text-xs px-2.5 py-0.5 font-bold" style={{background:color+"22",color,border:`1px solid ${color}44`}}>{band}·{score}</span>;}
+function Spinner({size=18}){return<div className="spinner" style={{width:size,height:size}}/>;}
+
+function Alert({type="error",children}){
+  const col=type==="error"?C.red:type==="success"?C.green:C.gold;
+  return<div className="flex items-start gap-2 p-3 rounded-xl mb-4 text-sm" style={{background:col+"15",border:`1px solid ${col}33`,color:col}}>
+    <AlertCircle size={14} style={{flexShrink:0,marginTop:1}}/>{children}
+  </div>;
+}
+
+function ScoreRing({score,size=68}){
+  const{color}=getBand(score);const r=size/2-5,circ=2*Math.PI*r,dash=circ*(score/100);
+  return<div className="relative flex-shrink-0" style={{width:size,height:size}}>
+    <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={4}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={4} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transition:"stroke-dasharray 0.5s ease"}}/>
+    </svg>
+    <div className="absolute inset-0 flex items-center justify-center">
+      <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:size/3.5,fontWeight:800,color,lineHeight:1}}>{score}</span>
+    </div>
+  </div>;
+}
+
+function FitSlider({label,maxPts,value=0,onChange}){
+  const col=value>=8?C.green:value>=6?C.gold:value>=4?"#EA7316":C.red;
+  return<div className="mb-3">
+    <div className="flex items-center justify-between mb-1">
+      <span style={{color:C.sub,fontSize:11,fontWeight:600}}>{label}</span>
+      <div className="flex items-center gap-2">
+        <span style={{color:C.muted,fontSize:9}}>/{maxPts}pts</span>
+        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style={{background:col+"22",color:col,border:`1px solid ${col}44`}}>{value}</div>
+      </div>
+    </div>
+    <div className="relative h-1.5 rounded-full" style={{background:C.border}}>
+      <div className="absolute left-0 top-0 h-full rounded-full transition-all" style={{width:`${value*10}%`,background:`linear-gradient(90deg,${C.primary},${col})`}}/>
+      <input type="range" min="0" max="10" value={value} onChange={e=>onChange(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0" style={{cursor:"ew-resize"}}/>
+    </div>
+  </div>;
+}
+
+function FieldInput({label,value,onChange,type="text",placeholder="",hint=""}){
+  const[focus,setFocus]=useState(false);
+  return<div className="mb-4">
+    <label style={{color:C.muted,fontSize:10,fontWeight:700,letterSpacing:1,display:"block",marginBottom:5}}>{label}</label>
+    <input value={value} onChange={e=>onChange(e.target.value)} type={type} placeholder={placeholder}
+      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+      style={{background:C.card2,border:`1px solid ${focus?C.primary:C.border}`,color:C.text,fontFamily:"inherit"}}
+      onFocus={()=>setFocus(true)} onBlur={()=>setFocus(false)}/>
+    {hint&&<div style={{color:C.muted,fontSize:10,marginTop:4}}>{hint}</div>}
+  </div>;
+}
+
+// ── SUPABASE SETUP SCREEN ─────────────────────────────────────────────────────
+function SetupScreen({onSave}){
+  const[url,setUrl]=useState("");const[key,setKey]=useState("");
+  const[err,setErr]=useState("");const[testing,setTesting]=useState(false);
+
+  const connect=async()=>{
+    if(!url.trim()||!key.trim()){setErr("Both fields are required.");return;}
+    setTesting(true);setErr("");
+    try{
+      const sb=createClient(url.trim(),key.trim());
+      const{error}=await sb.from("profiles").select("id").limit(1);
+      if(error&&!error.message.includes("no rows")&&error.code!=="PGRST116"){
+        setErr("Connection failed: "+error.message+". Check your URL and key, and make sure you ran the SQL schema.");
+      } else {
+        onSave(url.trim(),key.trim());
+      }
+    }catch(e){setErr("Connection error: "+e.message);}
+    setTesting(false);
+  };
+
+  return<div className="min-h-screen flex flex-col items-center justify-center p-5"
+    style={{background:`radial-gradient(ellipse 70% 50% at 50% 0%,${C.primary}30,${C.bg} 70%)`,backgroundColor:C.bg}}>
+    <div className="inline-flex w-14 h-14 rounded-2xl items-center justify-center mb-5"
+      style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,boxShadow:`0 0 40px ${C.fuchsia}35`}}>
+      <Database size={24} color="white"/>
+    </div>
+    <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:C.text,letterSpacing:2,marginBottom:4}}>CONNECT SUPABASE</div>
+    <div style={{color:C.muted,fontSize:12,marginBottom:24,textAlign:"center"}}>Paste your credentials from supabase.com → Project Settings → API</div>
+
+    <div className="w-full max-w-sm rounded-2xl p-6 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      {err&&<Alert type="error">{err}</Alert>}
+      <FieldInput label="PROJECT URL" value={url} onChange={setUrl} placeholder="https://xxxx.supabase.co"/>
+      <FieldInput label="ANON / PUBLIC KEY" value={key} onChange={setKey} placeholder="eyJhbGciOi…"/>
+      <button onClick={connect} disabled={testing||!url||!key}
+        className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+        style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:testing?"wait":"pointer",opacity:(!url||!key)?0.6:1}}>
+        {testing?<><Spinner size={14}/>Testing connection…</>:"Connect & Continue →"}
+      </button>
+    </div>
+
+    <div className="w-full max-w-sm p-4 rounded-xl" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Quick Setup</div>
+      {["1. Create project at supabase.com (free)","2. Paste schema SQL into SQL Editor and run","3. Go to Settings → API and copy credentials","4. Paste both values above and connect"].map((s,i)=>(
+        <div key={i} className="flex items-start gap-2 mb-2 last:mb-0">
+          <div className="w-4 h-4 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5"
+            style={{background:C.primary+"30",color:C.primary,fontSize:9}}>{i+1}</div>
+          <div style={{color:C.sub,fontSize:12}}>{s}</div>
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+// ── AUTH SCREEN ───────────────────────────────────────────────────────────────
+function AuthScreen({sb}){
+  const[mode,setMode]=useState("login");
+  const[email,setEmail]=useState("");const[pass,setPass]=useState("");
+  const[name,setName]=useState("");const[code,setCode]=useState("");
+  const[show,setShow]=useState(false);const[err,setErr]=useState("");
+  const[msg,setMsg]=useState("");const[loading,setLoading]=useState(false);
+
+  const go=async()=>{
+    setLoading(true);setErr("");setMsg("");
+    try{
+      if(mode==="login"){
+        const{error}=await sb.auth.signInWithPassword({email,password:pass});
+        if(error)setErr(error.message);
+      } else if(mode==="signup"){
+        const isStaff=code.trim().toUpperCase()===STAFF_CODE;
+        let athleteId=null;
+        if(!isStaff){
+          if(!code.trim()){setErr("Enter your athlete's access code.");setLoading(false);return;}
+          const{data,error}=await sb.rpc("get_athlete_by_code",{code:code.trim()});
+          if(error||!data||data.length===0){setErr("Access code not recognised. Check with your coaching staff.");setLoading(false);return;}
+          athleteId=data[0].id;
+        }
+        const{data,error}=await sb.auth.signUp({email,password:pass,options:{data:{display_name:name||email,role:isStaff?"staff":"parent"}}});
+        if(error){setErr(error.message);setLoading(false);return;}
+        if(data.user&&athleteId){
+          await sb.from("profiles").update({athlete_id:athleteId,display_name:name||email}).eq("id",data.user.id);
+        }
+        if(!data.session)setMsg("Account created! Check your email to confirm, then sign in.");
+      } else {
+        const{error}=await sb.auth.resetPasswordForEmail(email);
+        if(error)setErr(error.message);else setMsg("Reset link sent — check your email.");
+      }
+    }catch(e){setErr(e.message);}
+    setLoading(false);
+  };
+
+  return<div className="min-h-screen flex flex-col items-center justify-center p-5"
+    style={{background:`radial-gradient(ellipse 80% 55% at 50% 0%,${C.primary}35,${C.bg} 68%)`,backgroundColor:C.bg}}>
+    <div className="mb-8 text-center">
+      <div className="inline-flex w-16 h-16 rounded-2xl items-center justify-center mb-4"
+        style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,boxShadow:`0 0 48px ${C.fuchsia}40`}}>
+        <Trophy size={30} color="white"/>
+      </div>
+      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:C.text,letterSpacing:2}}>SCHOLARS ELITE</div>
+      <div style={{fontSize:11,color:C.muted,letterSpacing:3,textTransform:"uppercase",marginTop:2}}>Family Recruiting Portal</div>
+    </div>
+
+    <div className="w-full max-w-sm rounded-2xl p-6" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.text,fontSize:17,fontWeight:700,marginBottom:3}}>
+        {mode==="login"?"Welcome back":mode==="signup"?"Create your account":"Reset password"}
+      </div>
+      <div style={{color:C.muted,fontSize:12,marginBottom:18}}>
+        {mode==="login"?"Sign in to access your athlete's board":mode==="signup"?"Create your family account to get started":"Enter your email to receive a reset link"}
+      </div>
+
+      {err&&<Alert type="error">{err}</Alert>}
+      {msg&&<Alert type="success">{msg}</Alert>}
+
+      {mode==="signup"&&<FieldInput label="YOUR NAME" value={name} onChange={setName} placeholder="Sarah London"/>}
+      <FieldInput label="EMAIL" value={email} onChange={setEmail} type="email" placeholder="you@email.com"/>
+
+      {mode!=="forgot"&&(
+        <div className="mb-4">
+          <label style={{color:C.muted,fontSize:10,fontWeight:700,letterSpacing:1,display:"block",marginBottom:5}}>PASSWORD</label>
+          <div className="relative">
+            <input value={pass} onChange={e=>setPass(e.target.value)} type={show?"text":"password"} placeholder="••••••••"
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+              style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit",paddingRight:40}}
+              onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+            <button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{color:C.muted,cursor:"pointer"}}>
+              {show?<EyeOff size={15}/>:<Eye size={15}/>}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode==="signup"&&(
+        <div className="mb-4 p-4 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+          <div style={{color:C.sub,fontSize:12,fontWeight:600,marginBottom:10}}>Are you a parent or staff?</div>
+          <FieldInput label="ATHLETE ACCESS CODE (parents)" value={code} onChange={setCode} placeholder="e.g. LONDON2026" hint="Your coaching staff will provide this code"/>
+          <div style={{color:C.muted,fontSize:10,marginTop:-8}}>Staff? Enter: SCHOLARS-STAFF-2026</div>
+        </div>
+      )}
+
+      <button onClick={go} disabled={loading}
+        className="w-full py-3 rounded-xl font-bold text-sm mt-1 flex items-center justify-center gap-2"
+        style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:loading?"wait":"pointer"}}>
+        {loading?<><Spinner size={14}/> Working…</>:mode==="login"?"Sign In →":mode==="signup"?"Create Account →":"Send Reset Link"}
+      </button>
+
+      <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
+        {mode==="login"&&<>
+          <button onClick={()=>{setMode("signup");setErr("");setMsg("");}} style={{color:C.primary,fontSize:12,fontWeight:600,cursor:"pointer"}}>New family? Sign up</button>
+          <span style={{color:C.border}}>·</span>
+          <button onClick={()=>{setMode("forgot");setErr("");setMsg("");}} style={{color:C.muted,fontSize:12,cursor:"pointer"}}>Forgot password?</button>
+        </>}
+        {mode!=="login"&&<button onClick={()=>{setMode("login");setErr("");setMsg("");}} style={{color:C.primary,fontSize:12,fontWeight:600,cursor:"pointer"}}>← Back to sign in</button>}
+      </div>
+    </div>
+  </div>;
+}
+
+// ── ONBOARDING FLOW ───────────────────────────────────────────────────────────
+function OnboardingFlow({userName,athlete,board,onComplete}){
+  const[step,setStep]=useState(0);const[animKey,setAnimKey]=useState(0);
+  const firstName=userName?userName.split(" ")[0]:userName||"there";
+  const topSchool=[...(board||[])].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score)[0];
+
+  const next=()=>{setAnimKey(k=>k+1);step<3?setStep(s=>s+1):onComplete();};
+
+  const STEPS=[
+    {emoji:"👋",title:`Welcome, ${firstName}`,subtitle:`You now have access to ${athlete?.name||"your athlete"}'s official recruiting portal. Everything your coaching staff does — you'll see here in real time.`,cta:"Let's get started →",extra:null},
+    {emoji:"📊",title:"How placement scores work",subtitle:"Every school gets a score from 0–100 across 8 factors — basketball fit, opportunity, academics, geography, and more. The score drives everything.",cta:"Got it →",extra:"bands"},
+    {emoji:"🏫",title:topSchool?`Top fit: ${topSchool.school}`:"Your board is ready",subtitle:topSchool?`Staff has ${board?.length||0} school${(board?.length||0)!==1?"s":""} on the board. ${topSchool.school} is the current top placement fit.`:"Staff has set up your athlete's profile. Head to the Schools tab to start building.",cta:"See the breakdown →",extra:topSchool?"school":null},
+    {emoji:"🔔",title:"You're all set",subtitle:"You'll see updates here every time staff adds a school, changes a score, or logs an offer. The board is live.",cta:`Open ${athlete?.name?.split(" ")[0]||"the"}'s portal →`,extra:"checklist"},
+  ];
+
+  const s=STEPS[step];
+
+  return<div className="min-h-screen flex flex-col" style={{background:C.bg}}>
+    <div className="h-1 w-full" style={{background:C.border}}>
+      <div className="h-full transition-all duration-500" style={{width:`${(step/3)*100+(step===3?33:0)}%`,background:`linear-gradient(90deg,${C.primary},${C.fuchsia})`}}/>
+    </div>
+    <div style={{maxWidth:480,margin:"0 auto",padding:"32px 20px 40px",flex:1,display:"flex",flexDirection:"column"}}>
+      <div className="flex items-center justify-center gap-2 mb-10">
+        {[0,1,2,3].map(i=>(
+          <div key={i} className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300"
+              style={{background:i<step?C.green:i===step?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.card2,
+                color:i<=step?"white":C.muted,border:`1px solid ${i<step?C.green:i===step?C.primary:C.border}`,
+                transform:i===step?"scale(1.15)":"scale(1)"}}>
+              {i<step?<Check size={12}/>:i+1}
+            </div>
+            {i<3&&<div className="w-6 h-0.5 rounded-full transition-all duration-500" style={{background:i<step?C.green:C.border}}/>}
+          </div>
+        ))}
+      </div>
+
+      <div key={animKey} className="fade-up flex-1 flex flex-col">
+        <div className="rounded-2xl p-8 mb-5 text-center relative overflow-hidden"
+          style={{background:`linear-gradient(135deg,${C.primary}85,${C.fuchsia}45)`,border:`1px solid ${C.primary}60`}}>
+          <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)",backgroundSize:"12px 12px"}}/>
+          <div className="relative">
+            <div className="text-5xl mb-4" style={{animation:"popIn 0.4s ease"}}>{s.emoji}</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:27,fontWeight:800,color:"white",lineHeight:1.15,marginBottom:12}}>{s.title}</div>
+            <div style={{color:"rgba(255,255,255,0.72)",fontSize:14,lineHeight:1.65}}>{s.subtitle}</div>
+          </div>
+        </div>
+
+        {s.extra==="bands"&&(
+          <div className="rounded-2xl p-5 mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+            <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Score Bands</div>
+            {[{band:"A1",range:"90–100",label:"Priority Push",color:"#16A34A",desc:"Staff should be actively building this relationship now"},
+              {band:"A2",range:"80–89",label:"Strong Target",color:"#22C55E",desc:"Realistic fit — activate outreach"},
+              {band:"B1",range:"70–79",label:"Real Fit",color:"#F5A623",desc:"Keep warm, monitor closely"},
+              {band:"B2",range:"60–69",label:"Situational",color:"#EA7316",desc:"Only if mutual traction develops"},
+              {band:"C–D",range:"Below 60",label:"Low Priority",color:"#6B5E88",desc:"Not an active placement target"}
+            ].map(b=>(
+              <div key={b.band} className="flex items-center gap-3 p-3 rounded-xl mb-2 last:mb-0" style={{background:b.color+"12",border:`1px solid ${b.color}22`}}>
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0" style={{background:b.color+"25",color:b.color,border:`1px solid ${b.color}44`}}>{b.band}</div>
+                <div className="flex-1"><div style={{color:C.text,fontSize:13,fontWeight:700}}>{b.label} <span style={{color:b.color}}>{b.range}</span></div><div style={{color:C.muted,fontSize:11,marginTop:1}}>{b.desc}</div></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {s.extra==="school"&&topSchool&&(
+          <div className="rounded-2xl overflow-hidden mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+            <div className="p-5">
+              <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Top Placement Fit</div>
+              <div className="flex items-center gap-4 mb-4">
+                <ScoreRing score={topSchool.score} size={72}/>
+                <div className="flex-1">
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",color:C.text,fontSize:22,fontWeight:800,lineHeight:1}}>{topSchool.school}</div>
+                  <div style={{color:C.muted,fontSize:13,marginTop:2,marginBottom:8}}>{topSchool.conference}</div>
+                  <div className="flex flex-wrap gap-1.5"><TierBadge tier={topSchool.tier}/><Badge color={getBand(topSchool.score).color}>{getRecruit(parseInt((athlete?.player_level||athlete?.playerLevel||"PL3").replace("PL","")),parseInt(topSchool.tier.replace("T","")),topSchool.score)}</Badge></div>
+                </div>
+              </div>
+              {topSchool.notes&&<div className="p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}><div style={{color:C.muted,fontSize:10,fontWeight:700,marginBottom:4}}>STAFF NOTE</div><div style={{color:C.sub,fontSize:12,lineHeight:1.5}}>{topSchool.notes}</div></div>}
+            </div>
+          </div>
+        )}
+
+        {s.extra==="checklist"&&(
+          <div className="rounded-2xl p-5 mb-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+            <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>What you can do</div>
+            {[{icon:"👀",label:"View placement board",sub:"See every school, score, and fit rating"},
+              {icon:"✏️",label:"Update athlete info",sub:"GPA, film link, offers received"},
+              {icon:"🏫",label:"Add schools to the board",sub:"Rate fit factors, see scores update live"},
+              {icon:"🔔",label:"Get notified on staff moves",sub:"Offer logged, level change, new school added"},
+            ].map((item,i)=>(
+              <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
+                <div className="text-xl flex-shrink-0 mt-0.5">{item.icon}</div>
+                <div><div style={{color:C.text,fontSize:13,fontWeight:700}}>{item.label}</div><div style={{color:C.muted,fontSize:11,marginTop:1}}>{item.sub}</div></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={next} className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 mt-auto"
+          style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer",boxShadow:`0 8px 30px ${C.primary}50`}}>
+          {s.cta}<ArrowRight size={16}/>
+        </button>
+        {step>0&&<button onClick={()=>{setAnimKey(k=>k+1);setStep(s=>s-1);}} className="w-full py-2 mt-3 text-sm font-bold" style={{color:C.muted,cursor:"pointer"}}>← Back</button>}
+        {step===0&&<button onClick={onComplete} className="w-full py-2 mt-3 text-sm" style={{color:C.muted,cursor:"pointer"}}>Skip intro</button>}
+      </div>
+    </div>
+  </div>;
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function Dashboard({athlete,board,feed=[],isStaff=false}){
+  const scored=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score);
+  const avg=board.length?Math.round(scored.reduce((a,s)=>a+s.score,0)/board.length):0;
+  const priority=scored.filter(s=>["A1","A2"].includes(getBand(s.score).band)).length;
+  const pl=athlete.player_level||athlete.playerLevel||"PL3";
+  const offers=athlete.offers||[];
+  return<div>
+    <div className="rounded-2xl p-5 mb-4 relative overflow-hidden" style={{background:`linear-gradient(135deg,${C.primary}90,${C.fuchsia}50)`,border:`1px solid ${C.primary}60`}}>
+      <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)",backgroundSize:"12px 12px"}}/>
+      <div className="relative flex items-start justify-between">
+        <div className="flex-1">
+          <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Your Athlete</div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:"white",lineHeight:1.1}}>{athlete.name}</div>
+          <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,marginTop:3}}>{athlete.position}·{athlete.height}·Class of {athlete.grad_year||athlete.gradYear}</div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <PLBadge level={pl}/>
+            <Badge color={C.gold}>GPA {athlete.gpa}</Badge>
+            {offers.length>0&&<Badge color={C.green}>{offers.length} Offer{offers.length!==1?"s":""}</Badge>}
+          </div>
+        </div>
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center font-black ml-3 flex-shrink-0 text-base" style={{background:"rgba(255,255,255,0.15)",color:"white"}}>{athlete.name.split(" ").map(n=>n[0]).join("")}</div>
+      </div>
+      {(athlete.recruiting_story||athlete.recruitingStory)&&<div className="mt-4 pt-3 border-t" style={{borderColor:"rgba(255,255,255,0.15)"}}><p style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontStyle:"italic",lineHeight:1.5}}>"{athlete.recruiting_story||athlete.recruitingStory}"</p></div>}
+    </div>
+
+    <div className="grid grid-cols-3 gap-3 mb-4">
+      {[{label:"Schools",val:board.length,col:C.primary,Ic:School},{label:"Avg Fit",val:board.length?avg:"—",col:C.fuchsia,Ic:BarChart3},{label:"Priority",val:priority,col:C.gold,Ic:Zap}].map(({label,val,col,Ic})=>(
+        <div key={label} className="rounded-xl p-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+          <Ic size={15} style={{color:col,marginBottom:8}}/>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:col,lineHeight:1}}>{val}</div>
+          <div style={{color:C.muted,fontSize:10,marginTop:2}}>{label}</div>
+        </div>
+      ))}
+    </div>
+
+    {scored.slice(0,3).length>0?(
+      <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Top Placement Fits</div>
+        {scored.slice(0,3).map((s,i)=>{
+          const{color}=getBand(s.score);
+          const plN=parseInt(pl.replace("PL",""));
+          const tN=parseInt((s.tier||"T3").replace("T",""));
+          const rec=getRecruit(plN,tN,s.score);
+          return<div key={s.id} className="flex items-center gap-3 mb-3 last:mb-0 p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{background:i===0?C.gold+"25":C.border,color:i===0?C.gold:C.muted}}>{i+1}</div>
+            <div className="flex-1 min-w-0">
+              <div style={{color:C.text,fontWeight:700,fontSize:14}}>{s.school}</div>
+              <div style={{color:C.muted,fontSize:11}}>{s.conference}·<span style={{color}}>{rec}</span></div>
+            </div>
+            <ScorePill score={s.score}/>
+          </div>;
+        })}
+      </div>
+    ):(
+      <div className="rounded-2xl p-8 text-center mb-4" style={{background:C.card,border:`1px dashed ${C.border}`}}>
+        <Target size={28} style={{color:C.muted,margin:"0 auto 10px"}}/>
+        <div style={{color:C.text,fontWeight:600,marginBottom:4}}>Board is empty</div>
+        <div style={{color:C.muted,fontSize:12}}>Go to Schools tab to build your placement board</div>
+      </div>
+    )}
+
+    {feed.length>0&&(
+      <div className="rounded-2xl p-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Recent Activity</div>
+        {feed.map(f=>(
+          <div key={f.id} className="flex gap-3 mb-3 last:mb-0">
+            <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{background:C.fuchsia}}/>
+            <div>
+              <div style={{color:C.text,fontSize:13}}>{f.message}</div>
+              <div style={{color:C.muted,fontSize:10,marginTop:2}}>{new Date(f.created_at).toLocaleDateString()}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>;
+}
+
+// ── ATHLETE EDITOR ────────────────────────────────────────────────────────────
+function AthleteEditor({athlete,isStaff,onSave}){
+  const pl=athlete.player_level||athlete.playerLevel||"PL3";
+  const[form,setForm]=useState({...athlete,offers:athlete.offers||[],playerLevel:pl});
+  const[saving,setSaving]=useState(false);const[saved,setSaved]=useState(false);const[newOffer,setNewOffer]=useState("");
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const save=async()=>{setSaving(true);await onSave(form);setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const addOffer=()=>{if(!newOffer.trim())return;set("offers",[...form.offers,newOffer.trim()]);setNewOffer("");};
+
+  return<div>
+    <div className="flex items-center justify-between mb-5">
+      <div><div style={{color:C.text,fontSize:18,fontWeight:700}}>{athlete.name}</div><PLBadge level={form.playerLevel}/></div>
+      <button onClick={save} disabled={saving} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold"
+        style={{background:saved?C.green:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>
+        {saving?<Spinner size={13}/>:saved?<><Check size={14}/>Saved!</>:<><Edit3 size={14}/>Save</>}
+      </button>
+    </div>
+
+    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Basic Info</div>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        {[{k:"gpa",label:"GPA",ph:"3.5"},{k:"height",label:"Height",ph:"5'10\""}].map(f=>(
+          <div key={f.k}>
+            <label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>{f.label.toUpperCase()}</label>
+            <input value={form[f.k]||""} onChange={e=>set(f.k,e.target.value)} placeholder={f.ph}
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+              style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+              onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+          </div>
+        ))}
+      </div>
+      <label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>HIGHLIGHT FILM URL</label>
+      <input value={form.highlight_link||form.highlightLink||""} onChange={e=>set("highlight_link",e.target.value)} type="url" placeholder="https://hudl.com/…"
+        className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
+        style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+        onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+    </div>
+
+    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Scouting Notes</div>
+      {[{k:"strengths",label:"STRENGTHS"},{k:"development_needs",label:"DEVELOPMENT NEEDS"},{k:"recruiting_story",label:"RECRUITING STORY"}].map(f=>(
+        <div key={f.k} className="mb-4 last:mb-0">
+          <label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>{f.label}</label>
+          <textarea value={form[f.k]||""} onChange={e=>set(f.k,e.target.value)} rows={2}
+            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+            style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+            onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+        </div>
+      ))}
+    </div>
+
+    <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      {isStaff?(
+        <>
+          <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Player Level <span style={{color:C.fuchsia}}>(Staff Only)</span></div>
+          <div className="flex flex-wrap gap-2">
+            {PLs.map(p=>(
+              <button key={p} onClick={()=>set("playerLevel",p)} className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{background:form.playerLevel===p?PL_COLOR[p]:C.card2,color:form.playerLevel===p?"white":C.muted,border:`1px solid ${form.playerLevel===p?PL_COLOR[p]:C.border}`,cursor:"pointer"}}>
+                {p}·{PL_LABEL[p]}
+              </button>
+            ))}
+          </div>
+        </>
+      ):(
+        <div className="flex items-center gap-3">
+          <Lock size={14} style={{color:C.primary,flexShrink:0}}/>
+          <div>
+            <div style={{color:C.text,fontSize:13,fontWeight:600}}>Player Level is set by your coaching staff</div>
+            <div style={{color:C.muted,fontSize:11,marginTop:1}}>Current: <strong style={{color:C.text}}>{PL_LABEL[form.playerLevel]}</strong></div>
+          </div>
+        </div>
+      )}
+    </div>
+
+    <div className="rounded-2xl p-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Scholarship Offers</div>
+      {form.offers.length>0&&(
+        <div className="flex flex-wrap gap-2 mb-3">
+          {form.offers.map((o,i)=>(
+            <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold" style={{background:C.green+"22",color:C.green,border:`1px solid ${C.green}44`}}>
+              {o}<button onClick={()=>set("offers",form.offers.filter((_,j)=>j!==i))} style={{cursor:"pointer",lineHeight:0,color:C.green}}><X size={10}/></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input value={newOffer} onChange={e=>setNewOffer(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addOffer()} placeholder="School name + Enter…"
+          className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none"
+          style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}
+          onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+        <button onClick={addOffer} className="px-3 rounded-xl" style={{background:C.green+"22",color:C.green,border:`1px solid ${C.green}44`,cursor:"pointer"}}><Plus size={16}/></button>
+      </div>
+    </div>
+  </div>;
+}
+
+// ── SCHOOL BOARD ──────────────────────────────────────────────────────────────
+function AddSchoolModal({athlete,board,isStaff,onAdd,onClose}){
+  const[step,setStep]=useState(1);const[search,setSearch]=useState("");const[selected,setSelected]=useState(null);const[custom,setCustom]=useState({school:"",conference:"",tier:"T3"});const[factors,setFactors]=useState({bbLevel:5,opportunity:5,athletic:5,skill:5,academic:5,style:5,geo:5,relationship:5});const[notes,setNotes]=useState("");const[staffNotes,setStaffNotes]=useState("");const[saving,setSaving]=useState(false);
+  const existing=board.map(s=>s.school);const filtered=SCHOOL_DB.filter(s=>s.school.toLowerCase().includes(search.toLowerCase())&&!existing.includes(s.school));const school=selected||custom;const score=calcScore(factors);const{color}=getBand(score);const pl=athlete.player_level||athlete.playerLevel||"PL3";const plN=parseInt(pl.replace("PL",""));const tN=parseInt((school.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,score);
+  const doAdd=async()=>{setSaving(true);await onAdd({school:school.school,conference:school.conference,tier:school.tier,factors,notes,staff_notes:staffNotes,has_offer:false});setSaving(false);};
+
+  return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.85)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col" style={{background:C.card,border:`1px solid ${C.border}`,maxHeight:"90vh"}}>
+      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}>
+        <div><div style={{color:C.text,fontWeight:700,fontSize:16}}>{step===1?"Add a School":`Rate: ${school.school||"Custom"}`}</div><div style={{color:C.muted,fontSize:12}}>Step {step} of 2</div></div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><X size={20}/></button>
+      </div>
+      <div className="overflow-y-auto flex-1 p-5">
+        {step===1?(<>
+          <div className="relative mb-4"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:C.muted}}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search programs…" autoFocus className="w-full pl-9 pr-4 py-3 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/></div>
+          <div className="flex flex-col gap-2 mb-4">{filtered.slice(0,8).map(s=><button key={s.school} onClick={()=>{setSelected(s);setStep(2);}} className="flex items-center justify-between p-3.5 rounded-xl text-left" style={{background:C.card2,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}><div><div style={{color:C.text,fontWeight:600,fontSize:14}}>{s.school}</div><div style={{color:C.muted,fontSize:12}}>{s.conference}</div></div><TierBadge tier={s.tier}/></button>)}</div>
+          <div className="p-4 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+            <div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Custom School</div>
+            <div className="grid grid-cols-2 gap-3 mb-3"><input value={custom.school} onChange={e=>setCustom(c=>({...c,school:e.target.value}))} placeholder="School name" className="px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/><input value={custom.conference} onChange={e=>setCustom(c=>({...c,conference:e.target.value}))} placeholder="Conference" className="px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div>
+            <div className="flex flex-wrap gap-1.5 mb-3">{TIERS.map(t=><button key={t} onClick={()=>setCustom(c=>({...c,tier:t}))} className="px-2.5 py-1 rounded-lg text-xs font-bold" style={{background:custom.tier===t?TIER_COLOR[t]:C.card,color:custom.tier===t?"white":C.muted,border:`1px solid ${custom.tier===t?TIER_COLOR[t]:C.border}`,cursor:"pointer"}}>{t}</button>)}</div>
+            <button onClick={()=>custom.school.trim()&&setStep(2)} disabled={!custom.school.trim()} className="w-full py-2.5 rounded-xl text-sm font-bold" style={{background:custom.school.trim()?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.border,color:"white",cursor:custom.school.trim()?"pointer":"default"}}>Rate This School →</button>
+          </div>
+        </>):(<>
+          <div className="flex items-center justify-between p-4 rounded-xl mb-4" style={{background:C.card2,border:`1px solid ${color}44`}}><div><TierBadge tier={school.tier||"T3"}/><div style={{color,fontSize:12,fontWeight:600,marginTop:4}}>{rec}</div></div><ScoreRing score={score} size={68}/></div>
+          <div className="h-2 rounded-full overflow-hidden mb-4" style={{background:C.border}}><div className="h-full rounded-full transition-all" style={{width:`${score}%`,background:`linear-gradient(90deg,${C.primary},${color})`}}/></div>
+          {Object.entries(FACTOR_LABELS).map(([k,lbl])=><FitSlider key={k} label={lbl} maxPts={MAX_PTS[k]} value={factors[k]} onChange={v=>setFactors(f=>({...f,[k]:v}))}/>)}
+          <div className="mt-3"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>NOTES</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} placeholder="Context, intel, reasons…" className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div>
+          {isStaff&&<div className="mt-3"><label style={{color:C.fuchsia,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>STAFF NOTES (private — families won't see this)</label><textarea value={staffNotes} onChange={e=>setStaffNotes(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.fuchsia+"10",border:`1px solid ${C.fuchsia}44`,color:C.text,fontFamily:"inherit"}}/></div>}
+        </>)}
+      </div>
+      <div className="p-5 border-t flex gap-3" style={{borderColor:C.border}}>
+        {step===2&&<button onClick={()=>setStep(1)} className="flex items-center gap-1.5 px-4 py-3 rounded-xl text-sm font-bold" style={{background:C.card2,color:C.muted,border:`1px solid ${C.border}`,cursor:"pointer"}}><ArrowLeft size={14}/>Back</button>}
+        {step===2&&<button onClick={doAdd} disabled={saving} className="flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>
+          {saving?<><Spinner size={13}/>Saving…</>:`Add to Board — Score ${score}/100`}
+        </button>}
+      </div>
+    </div>
+  </div>;
+}
+
+function EditSchoolModal({school,athlete,isStaff,onSave,onClose}){
+  const[factors,setFactors]=useState({...(school.factors||{})});const[notes,setNotes]=useState(school.notes||"");const[staffNotes,setStaffNotes]=useState(school.staff_notes||school.staffNotes||"");const[hasOffer,setHasOffer]=useState(school.has_offer||school.hasOffer||false);const[lastContact,setLastContact]=useState(school.last_contact||school.lastContact||"");const[saving,setSaving]=useState(false);
+  const score=calcScore(factors);const{band,color}=getBand(score);const pl=athlete.player_level||athlete.playerLevel||"PL3";const plN=parseInt(pl.replace("PL",""));const tN=parseInt((school.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,score);
+  const save=async()=>{setSaving(true);await onSave({...school,factors,notes,staff_notes:staffNotes,has_offer:hasOffer,last_contact:lastContact});setSaving(false);};
+
+  return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.85)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col" style={{background:C.card,border:`1px solid ${C.border}`,maxHeight:"90vh"}}>
+      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}>
+        <div><div style={{color:C.text,fontWeight:700,fontSize:17}}>{school.school}</div><TierBadge tier={school.tier||"T3"}/></div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><X size={20}/></button>
+      </div>
+      <div className="overflow-y-auto flex-1 p-5">
+        <div className="flex items-center justify-between mb-2"><div><div style={{color:C.muted,fontSize:12}}>Live Score</div><div style={{color,fontSize:12,fontWeight:600}}>{rec}</div></div><ScoreRing score={score} size={68}/></div>
+        <div className="h-2 rounded-full overflow-hidden mb-4" style={{background:C.border}}><div className="h-full rounded-full transition-all" style={{width:`${score}%`,background:`linear-gradient(90deg,${C.primary},${color})`}}/></div>
+        {Object.entries(FACTOR_LABELS).map(([k,lbl])=><FitSlider key={k} label={lbl} maxPts={MAX_PTS[k]} value={factors[k]||0} onChange={v=>setFactors(f=>({...f,[k]:v}))}/>)}
+        <label className="flex items-center gap-3 p-3 rounded-xl mb-4 cursor-pointer" style={{background:C.card2,border:`1px solid ${C.border}`}}><input type="checkbox" checked={hasOffer} onChange={e=>setHasOffer(e.target.checked)} style={{accentColor:C.green,width:16,height:16}}/><span style={{color:C.text,fontSize:14}}>Scholarship offer received</span></label>
+        <div className="mb-4"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>LAST CONTACT DATE</label><input type="date" value={lastContact} onChange={e=>setLastContact(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit",colorScheme:"dark"}}/></div>
+        <div className="mb-4"><label style={{color:C.muted,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>NOTES</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}}/></div>
+        {isStaff&&<div><label style={{color:C.fuchsia,fontSize:10,fontWeight:700,display:"block",marginBottom:5}}>STAFF NOTES (private)</label><textarea value={staffNotes} onChange={e=>setStaffNotes(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.fuchsia+"10",border:`1px solid ${C.fuchsia}44`,color:C.text,fontFamily:"inherit"}}/></div>}
+      </div>
+      <div className="p-5 border-t" style={{borderColor:C.border}}>
+        <button onClick={save} disabled={saving} className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>
+          {saving?<><Spinner size={13}/>Saving…</>:`Save — Score ${score}/100 · Band ${band}`}
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
+function SchoolBoard({athlete,board,isStaff,onAdd,onUpdate,onRemove}){
+  const[showAdd,setShowAdd]=useState(false);const[editing,setEditing]=useState(null);const[sortBy,setSortBy]=useState("score");
+  const scored=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>sortBy==="score"?b.score-a.score:sortBy==="school"?a.school.localeCompare(b.school):parseInt((a.tier||"T3").slice(1))-parseInt((b.tier||"T3").slice(1)));
+
+  return<div>
+    <div className="flex items-center justify-between mb-4">
+      <div><div style={{color:C.text,fontWeight:700,fontSize:16}}>{board.length} School{board.length!==1?"s":""}</div><div style={{color:C.muted,fontSize:12}}>Tap to edit fit factors</div></div>
+      <div className="flex gap-2">
+        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} className="px-3 py-2 rounded-xl text-xs outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.sub,cursor:"pointer"}}>
+          <option value="score">By Score</option><option value="school">A–Z</option><option value="tier">By Tier</option>
+        </select>
+        <button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}><Plus size={14}/>Add</button>
+      </div>
+    </div>
+
+    <div className="flex flex-col gap-3">
+      {scored.map(s=>{
+        const{band,color}=getBand(s.score);const pl=athlete.player_level||athlete.playerLevel||"PL3";const plN=parseInt(pl.replace("PL",""));const tN=parseInt((s.tier||"T3").replace("T",""));const rec=getRecruit(plN,tN,s.score);const hasOffer=s.has_offer||s.hasOffer;
+        return<div key={s.id} className="rounded-2xl overflow-hidden" style={{background:C.card,border:`1px solid ${C.border}`}}>
+          <div className="p-4">
+            <div className="flex items-start gap-3">
+              <ScoreRing score={s.score} size={60}/>
+              <div className="flex-1 min-w-0">
+                <div style={{color:C.text,fontWeight:700,fontSize:15}}>{s.school}</div>
+                <div style={{color:C.muted,fontSize:12,marginBottom:6}}>{s.conference}</div>
+                <div className="flex flex-wrap gap-1.5"><TierBadge tier={s.tier||"T3"}/><Badge color={color}>{rec}</Badge>{hasOffer&&<Badge color={C.green}>✓ Offer</Badge>}</div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-1">
+              {Object.entries(s.factors||{}).map(([k,v])=>{const c=v>=8?C.green:v>=6?C.gold:v>=4?"#EA7316":C.red;return<div key={k} title={`${FACTOR_LABELS[k]}: ${v}/10`}><div style={{color:C.muted,fontSize:9,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{FACTOR_LABELS[k].split(" ")[0]}</div><div className="h-1.5 rounded-full" style={{background:C.border}}><div style={{width:`${(v||0)*10}%`,height:"100%",borderRadius:9999,background:c}}/></div></div>;})}
+            </div>
+            {s.notes&&<div style={{color:C.muted,fontSize:12,fontStyle:"italic",marginTop:8}}>"{s.notes}"</div>}
+            {isStaff&&s.staff_notes&&<div className="mt-2 p-2 rounded-lg" style={{background:C.fuchsia+"12",border:`1px solid ${C.fuchsia}33`}}><span style={{color:C.fuchsia,fontSize:10,fontWeight:700}}>STAFF · </span><span style={{color:C.sub,fontSize:12}}>{s.staff_notes}</span></div>}
+          </div>
+          <div className="flex" style={{borderTop:`1px solid ${C.border}`}}>
+            <button onClick={()=>setEditing(s)} className="flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5" style={{color:C.primary,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.primary+"15"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Sliders size={12}/>Edit Fit Factors</button>
+            <div style={{width:1,background:C.border}}/>
+            <button onClick={()=>onRemove(s.id)} className="px-5 py-2.5 flex items-center justify-center" style={{color:C.red,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.red+"15"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><Trash2 size={13}/></button>
+          </div>
+        </div>;
+      })}
+    </div>
+
+    {board.length===0&&<div className="rounded-2xl p-10 text-center mt-2" style={{background:C.card,border:`1px dashed ${C.border}`}}><School size={30} style={{color:C.muted,margin:"0 auto 12px"}}/><div style={{color:C.text,fontWeight:600,marginBottom:4}}>Board is empty</div><div style={{color:C.muted,fontSize:13,marginBottom:16}}>Add schools and rate fit to see scores update live</div><button onClick={()=>setShowAdd(true)} className="px-6 py-3 rounded-xl font-bold text-sm" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer"}}>+ Add First School</button></div>}
+    {showAdd&&<AddSchoolModal athlete={athlete} board={board} isStaff={isStaff} onAdd={async s=>{await onAdd(s);setShowAdd(false);}} onClose={()=>setShowAdd(false)}/>}
+    {editing&&<EditSchoolModal school={editing} athlete={athlete} isStaff={isStaff} onSave={async s=>{await onUpdate(s);setEditing(null);}} onClose={()=>setEditing(null)}/>}
+  </div>;
+}
+
+// ── STAFF VIEW ────────────────────────────────────────────────────────────────
+function StaffView({sb,session,displayName}){
+  const[athletes,setAthletes]=useState([]);const[boards,setBoards]=useState({});const[feed,setFeed]=useState({});const[selected,setSelected]=useState(null);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");
+  const[showCommit,setShowCommit]=useState(false);const[showMessages,setShowMessages]=useState(false);
+
+  useEffect(()=>{load();},[]);
+
+  const load=async()=>{
+    setLoading(true);
+    const{data:ath,error}=await sb.from("athletes").select("*").order("team").order("name");
+    if(error){setErr("Failed to load athletes: "+error.message);setLoading(false);return;}
+    setAthletes(ath||[]);
+    if(ath){
+      const bMap={};
+      for(const a of ath){
+        const{data:bd}=await sb.from("school_boards").select("*").eq("athlete_id",a.id).order("created_at");
+        bMap[a.id]=bd||[];
+      }
+      setBoards(bMap);
+    }
+    setLoading(false);
+  };
+
+  const loadFeed=async(athleteId)=>{
+    const{data}=await sb.from("activity_feed").select("*").eq("athlete_id",athleteId).order("created_at",{ascending:false}).limit(10);
+    setFeed(f=>({...f,[athleteId]:data||[]}));
+  };
+
+  const logActivity=async(athleteId,type,message,meta={})=>{
+    await sb.from("activity_feed").insert({athlete_id:athleteId,actor_id:session.user.id,actor_name:displayName||"Staff",type,message,meta});
+  };
+
+  const saveAthlete=async(athleteId,updated)=>{
+    const prev=athletes.find(a=>a.id===athleteId);
+    const{error}=await sb.from("athletes").update({
+      gpa:updated.gpa,height:updated.height,archetype:updated.archetype,
+      player_level:updated.playerLevel||updated.player_level,
+      strengths:updated.strengths,development_needs:updated.development_needs,
+      recruiting_story:updated.recruiting_story,offers:updated.offers,
+      highlight_link:updated.highlight_link,visibility_score:updated.visibility_score
+    }).eq("id",athleteId);
+    if(!error){
+      setAthletes(ats=>ats.map(a=>a.id===athleteId?{...a,...updated,player_level:updated.playerLevel||updated.player_level}:a));
+      if(prev?.player_level!==(updated.playerLevel||updated.player_level)){
+        await logActivity(athleteId,"player_level_set",`Player level updated to ${updated.playerLevel||updated.player_level}`);
+      }
+    }
+  };
+
+  const addSchool=async(athleteId,s)=>{
+    const{data,error}=await sb.from("school_boards").insert({...s,athlete_id:athleteId,created_by:session.user.id,updated_by:session.user.id}).select().single();
+    if(!error&&data){
+      setBoards(b=>({...b,[athleteId]:[...(b[athleteId]||[]),data]}));
+      await logActivity(athleteId,"school_added",`Staff added ${s.school} to board (Score: ${calcScore(s.factors)}/100)`,{school:s.school,score:calcScore(s.factors)});
+    }
+  };
+
+  const updateSchool=async(athleteId,s)=>{
+    const{error}=await sb.from("school_boards").update({...s,updated_by:session.user.id}).eq("id",s.id);
+    if(!error){
+      setBoards(b=>({...b,[athleteId]:(b[athleteId]||[]).map(e=>e.id===s.id?{...e,...s}:e)}));
+      await logActivity(athleteId,"score_updated",`Updated fit factors for ${s.school}`,{school:s.school,score:calcScore(s.factors||{})});
+    }
+  };
+
+  const removeSchool=async(athleteId,id)=>{
+    const s=(boards[athleteId]||[]).find(e=>e.id===id);
+    await sb.from("school_boards").delete().eq("id",id);
+    setBoards(b=>({...b,[athleteId]:(b[athleteId]||[]).filter(e=>e.id!==id)}));
+    if(s)await logActivity(athleteId,"school_removed",`Removed ${s.school} from board`);
+  };
+
+  if(loading)return<div className="flex items-center justify-center py-20"><Spinner size={24}/></div>;
+  if(err)return<div className="p-4"><Alert type="error">{err}</Alert><button onClick={load} className="flex items-center gap-2 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><RefreshCw size={14}/>Retry</button></div>;
+
+  if(selected){
+    const athlete=athletes.find(a=>a.id===selected);
+    const board=boards[selected]||[];
+    const athleteFeed=feed[selected]||[];
+    if(!athlete)return null;
+    const isCommitted=athlete.status==="committed"||athlete.status==="signed";
+    return<div>
+      <button onClick={()=>setSelected(null)} className="flex items-center gap-2 mb-4 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><ArrowLeft size={14}/>Roster</button>
+      {/* Athlete header with status */}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:C.text,lineHeight:1}}>{athlete.name}</div>
+          <div style={{color:C.muted,fontSize:12,marginTop:2}}>{athlete.position}·{athlete.height}·Class of {athlete.grad_year}</div>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            <PLBadge level={athlete.player_level||"PL4"}/>
+            {athlete.status==="committed"&&<Badge color={C.green}>🎉 Committed → {athlete.committed_to}</Badge>}
+            {athlete.status==="signed"&&<Badge color={C.gold}>🏆 Signed → {athlete.committed_to}</Badge>}
+          </div>
+        </div>
+        {/* Action buttons */}
+        <div className="flex flex-col gap-2 flex-shrink-0 ml-3">
+          <button onClick={()=>setShowCommit(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold" style={{background:isCommitted?C.gold+"20":`linear-gradient(135deg,${C.green},#16A34A)`,color:isCommitted?C.gold:"white",border:isCommitted?`1px solid ${C.gold}44`:"none",cursor:"pointer"}}>
+            {isCommitted?"✍️ NLI Status":"🎉 Log Commit"}
+          </button>
+          <button onClick={()=>setShowMessages(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold" style={{background:C.primary+"20",color:C.primary,border:`1px solid ${C.primary}33`,cursor:"pointer"}}>
+            📬 Notes
+          </button>
+        </div>
+      </div>
+      {/* Tabs */}
+      <div className="flex gap-2 mb-5 pb-4 border-b" style={{borderColor:C.border}}>
+        {["dashboard","athlete","schools"].map(t=><button key={t} onClick={()=>{setTab(t);if(t==="dashboard")loadFeed(selected);}} className="px-4 py-2 rounded-xl text-sm font-bold capitalize" style={{background:tab===t?C.primary:C.card2,color:tab===t?"white":C.muted,cursor:"pointer"}}>{t}</button>)}
+      </div>
+      {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={athleteFeed} isStaff={true}/>}
+      {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={true} onSave={u=>saveAthlete(selected,u)}/>}
+      {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={true} onAdd={s=>addSchool(selected,s)} onUpdate={s=>updateSchool(selected,s)} onRemove={id=>removeSchool(selected,id)}/>}
+      {showCommit&&<CommitmentFlow sb={sb} athlete={athlete} board={board} onUpdate={u=>{setAthletes(ats=>ats.map(a=>a.id===u.id?u:a));}} onClose={()=>setShowCommit(false)}/>}
+      {showMessages&&<StaffMessaging sb={sb} session={session} athlete={athlete} displayName={displayName} onClose={()=>setShowMessages(false)}/>}
+    </div>;
+  }
+
+  const[teamFilter,setTeamFilter]=useState("all");const[search,setSearch]=useState("");
+  const TEAMS=["all","17U","16U","15U"];
+  const TEAM_COLOR={"17U":C.primary,"16U":C.fuchsia,"15U":C.gold};
+  const filtered=athletes.filter(a=>{
+    const matchTeam=teamFilter==="all"||(a.team||"17U")===teamFilter;
+    const matchSearch=!search||a.name.toLowerCase().includes(search.toLowerCase())||a.position?.toLowerCase().includes(search.toLowerCase());
+    return matchTeam&&matchSearch;
+  });
+  const grouped=TEAMS.slice(1).reduce((acc,t)=>{acc[t]=filtered.filter(a=>(a.team||"17U")===t);return acc;},{});
+
+  return<div>
+    {/* Header */}
+    <div className="flex items-center justify-between mb-4">
+      <div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:C.text}}>Roster</div><div style={{color:C.muted,fontSize:12}}>{athletes.length} athletes · 3 teams</div></div>
+      <button onClick={load} style={{color:C.muted,cursor:"pointer"}}><RefreshCw size={16}/></button>
+    </div>
+    {/* Search */}
+    <div className="relative mb-3">
+      <svg xmlns="http://www.w3.org/2000/svg" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search athletes…" className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+    </div>
+    {/* Team filter */}
+    <div className="flex gap-2 mb-5">
+      {TEAMS.map(t=><button key={t} onClick={()=>setTeamFilter(t)} className="px-3 py-1.5 rounded-xl text-xs font-bold" style={{background:teamFilter===t?(TEAM_COLOR[t]||C.primary):C.card,color:teamFilter===t?"white":C.muted,border:`1px solid ${teamFilter===t?(TEAM_COLOR[t]||C.primary):C.border}`,cursor:"pointer"}}>{t==="all"?"All Teams":t}</button>)}
+    </div>
+    {/* Team sections */}
+    {(teamFilter==="all"?["17U","16U","15U"]:[teamFilter]).map(team=>{
+      const teamAthletes=teamFilter==="all"?grouped[team]:filtered;
+      if(!teamAthletes||teamAthletes.length===0)return null;
+      const tc=TEAM_COLOR[team]||C.primary;
+      return<div key={team} className="mb-6">
+        {teamFilter==="all"&&<div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full" style={{background:tc}}/>
+          <div style={{color:tc,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>{team} — {teamAthletes.length} athletes</div>
+        </div>}
+        <div className="flex flex-col gap-2">
+          {teamAthletes.map(a=>{
+            const ab=boards[a.id]||[];const scored=ab.map(s=>calcScore(s.factors||{}));const top=scored.length?Math.max(...scored):0;const{color}=getBand(top);const p1=ab.filter(s=>getBand(calcScore(s.factors||{})).band==="A1").length;
+            return<button key={a.id} onClick={()=>{setSelected(a.id);setTab("dashboard");loadFeed(a.id);setShowCommit(false);setShowMessages(false);}} className="flex items-center gap-3 p-3.5 rounded-xl text-left w-full" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=tc} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black flex-shrink-0 text-xs" style={{background:tc+"22",color:tc,border:`1px solid ${tc}44`}}>{a.name.split(" ").map(n=>n[0]).join("")}</div>
+              <div className="flex-1 min-w-0">
+                <div style={{color:C.text,fontWeight:700,fontSize:13}}>{a.name}</div>
+                <div style={{color:C.muted,fontSize:10}}>{a.position}·{a.height}·{a.grad_year}</div>
+                <div className="flex flex-wrap gap-1 mt-1"><PLBadge level={a.player_level||"PL4"}/>{a.gpa&&<Badge color={C.gold}>GPA {a.gpa}</Badge>}{p1>0&&<Badge color={C.red}>🔴 {p1}</Badge>}</div>
+              </div>
+              <div className="text-right flex-shrink-0">{top>0?<><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color,lineHeight:1}}>{top}</div><div style={{color:C.muted,fontSize:9}}>top fit</div></>:<div style={{color:C.border,fontSize:10}}>—</div>}</div>
+            </button>;
+          })}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
+// ── COMMITMENT FLOW ───────────────────────────────────────────────────────────
+function CommitmentFlow({sb,athlete,board,onUpdate,onClose}){
+  const[phase,setPhase]=useState(athlete.status==="committed"?"committed":athlete.status==="signed"?"signed":"select");
+  const[school,setSchool]=useState(athlete.committed_to||"");
+  const[customSchool,setCustomSchool]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[confirm,setConfirm]=useState(false);
+
+  const topSchools=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score).slice(0,5);
+
+  const commitVerbal=async()=>{
+    if(!school.trim())return;
+    setSaving(true);
+    const{error}=await sb.from("athletes").update({status:"committed",committed_to:school}).eq("id",athlete.id);
+    if(!error){
+      await sb.from("activity_feed").insert({athlete_id:athlete.id,type:"committed",message:`🎉 ${athlete.name} has verbally committed to ${school}!`,meta:{school},actor_name:"Staff"});
+      onUpdate({...athlete,status:"committed",committed_to:school});
+      setPhase("committed");
+    }
+    setSaving(false);
+  };
+
+  const signNLI=async()=>{
+    setSaving(true);
+    const{error}=await sb.from("athletes").update({status:"signed"}).eq("id",athlete.id);
+    if(!error){
+      await sb.from("activity_feed").insert({athlete_id:athlete.id,type:"signed",message:`🏆 ${athlete.name} has signed her NLI to ${athlete.committed_to||school}!`,meta:{school:athlete.committed_to||school},actor_name:"Staff"});
+      onUpdate({...athlete,status:"signed"});
+      setPhase("signed");
+    }
+    setSaving(false);
+  };
+
+  const uncommit=async()=>{
+    setSaving(true);
+    await sb.from("athletes").update({status:"active",committed_to:null}).eq("id",athlete.id);
+    await sb.from("activity_feed").insert({athlete_id:athlete.id,type:"status_change",message:`Verbal commitment to ${athlete.committed_to} has been withdrawn. Status set back to active.`,actor_name:"Staff"});
+    onUpdate({...athlete,status:"active",committed_to:null});
+    onClose();
+    setSaving(false);
+  };
+
+  return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.9)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{background:C.card,border:`1px solid ${C.border}`}}>
+
+      {/* Header */}
+      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}>
+        <div>
+          <div style={{color:C.text,fontWeight:700,fontSize:16}}>Commitment Status</div>
+          <div style={{color:C.muted,fontSize:12}}>{athlete.name}</div>
+        </div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      <div className="p-5">
+        {/* Already signed */}
+        {phase==="signed"&&<div className="text-center py-4">
+          <div style={{fontSize:48,marginBottom:12}}>🏆</div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:C.gold,marginBottom:4}}>NLI SIGNED</div>
+          <div style={{color:C.text,fontSize:15,fontWeight:600,marginBottom:4}}>{athlete.name}</div>
+          <div style={{color:C.muted,fontSize:13,marginBottom:20}}>→ {athlete.committed_to||school}</div>
+          <div className="p-3 rounded-xl" style={{background:C.green+"12",border:`1px solid ${C.green}22`}}>
+            <div style={{color:C.green,fontSize:12}}>✅ Recruiting officially closed. Board is locked.</div>
+          </div>
+        </div>}
+
+        {/* Verbal committed — show NLI option */}
+        {phase==="committed"&&<div>
+          <div className="rounded-2xl p-5 mb-4 text-center relative overflow-hidden" style={{background:`linear-gradient(135deg,${C.green}50,#16A34A30)`,border:`1px solid ${C.green}60`}}>
+            <div style={{fontSize:40,marginBottom:8}}>🎉</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>{athlete.name}</div>
+            <div style={{color:"rgba(255,255,255,0.7)",fontSize:13,marginBottom:6}}>Verbally committed to</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:C.green}}>{athlete.committed_to||school}</div>
+          </div>
+          <button onClick={signNLI} disabled={saving} className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mb-3" style={{background:`linear-gradient(135deg,${C.gold},#D97706)`,color:"white",cursor:"pointer",boxShadow:`0 4px 20px ${C.gold}40`}}>
+            {saving?"Saving…":"✍️ Sign NLI — Close Recruiting"}
+          </button>
+          {!confirm&&<button onClick={()=>setConfirm(true)} className="w-full py-2 rounded-xl text-xs font-bold" style={{color:C.muted,cursor:"pointer"}}>Withdraw verbal commitment</button>}
+          {confirm&&<div className="p-4 rounded-xl mt-2" style={{background:C.red+"15",border:`1px solid ${C.red}33`}}>
+            <div style={{color:C.red,fontSize:13,fontWeight:600,marginBottom:8}}>Are you sure? This will reopen the board.</div>
+            <div className="flex gap-2">
+              <button onClick={uncommit} disabled={saving} className="flex-1 py-2 rounded-lg text-xs font-bold" style={{background:C.red,color:"white",cursor:"pointer"}}>Yes, withdraw</button>
+              <button onClick={()=>setConfirm(false)} className="flex-1 py-2 rounded-lg text-xs font-bold" style={{background:C.card2,color:C.muted,cursor:"pointer"}}>Cancel</button>
+            </div>
+          </div>}
+        </div>}
+
+        {/* Select school to commit to */}
+        {phase==="select"&&<div>
+          <div style={{color:C.muted,fontSize:12,marginBottom:14}}>Select the school or enter a name to log a verbal commitment.</div>
+
+          {topSchools.length>0&&<><div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>From Board</div>
+          <div className="flex flex-col gap-2 mb-4">
+            {topSchools.map(s=>{const{color}=getBand(s.score);return<button key={s.id} onClick={()=>setSchool(s.school)} className="flex items-center gap-3 p-3 rounded-xl text-left" style={{background:school===s.school?C.green+"18":C.card2,border:`1px solid ${school===s.school?C.green+"55":C.border}`,cursor:"pointer"}}>
+              <ScoreRing score={s.score} size={44}/>
+              <div className="flex-1"><div style={{color:C.text,fontWeight:700,fontSize:13}}>{s.school}</div><div style={{color:C.muted,fontSize:11}}>{s.conference}</div></div>
+              {school===s.school&&<div style={{color:C.green,fontSize:18}}>✓</div>}
+            </button>;})}
+          </div></>}
+
+          <div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Or Enter School Name</div>
+          <input value={customSchool} onChange={e=>{setCustomSchool(e.target.value);setSchool(e.target.value);}} placeholder="School name…" className="w-full px-3 py-2.5 rounded-xl text-sm outline-none mb-4" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+
+          <button onClick={commitVerbal} disabled={!school.trim()||saving} className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{background:school.trim()?`linear-gradient(135deg,${C.green},#16A34A)`:C.border,color:"white",cursor:school.trim()?"pointer":"default",opacity:school.trim()?1:0.6,boxShadow:school.trim()?`0 4px 20px ${C.green}40`:"none"}}>
+            {saving?"Saving…":`🎉 Log Verbal Commitment → ${school||"..."}`}
+          </button>
+        </div>}
+      </div>
+    </div>
+  </div>;
+}
+
+// ── STAFF MESSAGING ───────────────────────────────────────────────────────────
+function StaffMessaging({sb,session,athlete,displayName,onClose}){
+  const[messages,setMessages]=useState([]);const[loading,setLoading]=useState(true);const[text,setText]=useState("");const[sending,setSending]=useState(false);
+  const textareaRef=React.useRef(null);
+
+  useEffect(()=>{loadMessages();},[athlete.id]);
+
+  const loadMessages=async()=>{
+    setLoading(true);
+    const{data}=await sb.from("staff_messages").select("*").eq("athlete_id",athlete.id).order("created_at",{ascending:true});
+    setMessages(data||[]);
+    setLoading(false);
+  };
+
+  const send=async()=>{
+    if(!text.trim())return;
+    setSending(true);
+    const msg={athlete_id:athlete.id,sender_id:session.user.id,sender_name:displayName||"Staff",message:text.trim(),visible_to_family:true};
+    const{data,error}=await sb.from("staff_messages").insert(msg).select().single();
+    if(!error&&data){
+      setMessages(m=>[...m,data]);
+      setText("");
+      // Also log to activity feed so family sees it
+      await sb.from("activity_feed").insert({athlete_id:athlete.id,actor_id:session.user.id,actor_name:displayName||"Staff",type:"staff_note",message:`📬 Staff note: "${text.trim().slice(0,80)}${text.length>80?"…":""}"`,meta:{}});
+    }
+    setSending(false);
+    setTimeout(()=>textareaRef.current?.focus(),50);
+  };
+
+  return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.9)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col" style={{background:C.card,border:`1px solid ${C.border}`,maxHeight:"80vh"}}>
+      {/* Header */}
+      <div className="flex items-center justify-between p-5 border-b flex-shrink-0" style={{borderColor:C.border}}>
+        <div>
+          <div style={{color:C.text,fontWeight:700,fontSize:16}}>Staff Notes</div>
+          <div style={{color:C.muted,fontSize:12}}>{athlete.name} · Visible to family in activity feed</div>
+        </div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+        {loading&&<div className="text-center py-8" style={{color:C.muted}}>Loading…</div>}
+        {!loading&&messages.length===0&&<div className="text-center py-10">
+          <div style={{fontSize:32,marginBottom:8}}>📬</div>
+          <div style={{color:C.text,fontWeight:600,marginBottom:4}}>No notes yet</div>
+          <div style={{color:C.muted,fontSize:12}}>Staff notes appear in the family's activity feed. Use this to communicate recruiting updates, call summaries, or coaching intel.</div>
+        </div>}
+        {messages.map((m,i)=>(
+          <div key={m.id||i} className="p-4 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style={{background:C.primary+"30",color:C.primary}}>{(m.sender_name||"S")[0]}</div>
+                <span style={{color:C.text,fontSize:12,fontWeight:600}}>{m.sender_name||"Staff"}</span>
+              </div>
+              <div style={{color:C.muted,fontSize:10}}>{m.created_at?new Date(m.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):""}</div>
+            </div>
+            <div style={{color:C.sub,fontSize:13,lineHeight:1.6}}>{m.message}</div>
+            {m.visible_to_family&&<div style={{color:C.muted,fontSize:10,marginTop:6}}>✓ Visible to family</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Composer */}
+      <div className="p-4 border-t flex-shrink-0" style={{borderColor:C.border}}>
+        <div className="flex gap-2">
+          <textarea ref={textareaRef} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Add a staff note… (visible to family in activity feed)" rows={2} className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+          <button onClick={send} disabled={!text.trim()||sending} className="px-4 rounded-xl font-bold text-sm flex-shrink-0" style={{background:text.trim()?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.card2,color:text.trim()?"white":C.muted,cursor:text.trim()?"pointer":"default"}}>
+            {sending?"…":"Send"}
+          </button>
+        </div>
+        <div style={{color:C.muted,fontSize:10,marginTop:6}}>Enter to send · Shift+Enter for new line</div>
+      </div>
+    </div>
+  </div>;
+}
+
+// ── PROGRESS TRACKER + PLACEMENT REPORT ──────────────────────────────────────
+function ProgressView({athlete,board}){
+  const[showReport,setShowReport]=useState(false);
+  const pl=athlete.player_level||athlete.playerLevel||"PL3";
+
+  const ITEMS=[
+    {k:"gpa",        label:"GPA entered",              pts:15, icon:"📚", done:!!(athlete.gpa&&athlete.gpa!==""),       hint:"Edit in Athlete tab"},
+    {k:"film",       label:"Highlight film linked",     pts:20, icon:"🎬", done:!!(athlete.highlight_link||athlete.highlightLink), hint:"Add Hudl or YouTube link"},
+    {k:"board3",     label:"3+ schools on board",       pts:20, icon:"🏫", done:board.length>=3,                         hint:`${board.length}/3 schools added`},
+    {k:"story",      label:"Recruiting story written",  pts:15, icon:"📝", done:!!(athlete.recruiting_story||athlete.recruitingStory), hint:"Edit in Athlete tab"},
+    {k:"strengths",  label:"Strengths documented",      pts:10, icon:"💪", done:!!(athlete.strengths&&athlete.strengths!==""),       hint:"Edit in Athlete tab"},
+    {k:"visibility", label:"Visibility score set",      pts:10, icon:"👁",  done:(athlete.visibility_score||0)>0,         hint:"Set in Athlete tab"},
+    {k:"offers",     label:"Offer status logged",       pts:10, icon:"📋", done:(athlete.offers||[]).length>0||(board.some(s=>s.has_offer||s.hasOffer)), hint:"Log offers on school cards"},
+  ];
+
+  const earned=ITEMS.filter(i=>i.done).reduce((s,i)=>s+i.pts,0);
+  const total=ITEMS.reduce((s,i)=>s+i.pts,0);
+  const pct=Math.round((earned/total)*100);
+  const unlocked=pct>=80;
+  const {color}=getBand(pct);
+  const r=34,circ=2*Math.PI*r,dash=circ*(pct/100);
+
+  // Placement report data
+  const scored=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score);
+  const plN=parseInt(pl.replace("PL",""));
+
+  if(showReport&&unlocked) return <PlacementReport athlete={athlete} board={scored} pl={pl} plN={plN} onBack={()=>setShowReport(false)}/>;
+
+  return<div>
+    {/* Score ring + headline */}
+    <div className="rounded-2xl p-5 mb-4 flex items-center gap-5" style={{background:C.card,border:`1px solid ${unlocked?C.green:C.border}`}}>
+      <div className="relative flex-shrink-0" style={{width:76,height:76}}>
+        <svg width={76} height={76} style={{transform:"rotate(-90deg)"}}>
+          <circle cx={38} cy={38} r={r} fill="none" stroke={C.border} strokeWidth={5}/>
+          <circle cx={38} cy={38} r={r} fill="none" stroke={unlocked?C.green:C.primary} strokeWidth={5}
+            strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transition:"stroke-dasharray 0.5s ease"}}/>
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:unlocked?C.green:C.primary,lineHeight:1}}>{pct}%</span>
+        </div>
+      </div>
+      <div className="flex-1">
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",color:C.text,fontSize:20,fontWeight:800,lineHeight:1.1}}>
+          {pct<40?"Build your profile":pct<80?"Almost there":"Profile complete 🎉"}
+        </div>
+        <div style={{color:C.muted,fontSize:12,marginTop:4,lineHeight:1.5}}>
+          {pct<80?`Complete ${100-pct}% more to unlock your full placement report`:"Your placement report is unlocked and ready to view"}
+        </div>
+        {!unlocked&&<div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{background:C.border}}>
+          <div className="h-full rounded-full transition-all duration-500" style={{width:`${pct}%`,background:`linear-gradient(90deg,${C.primary},${C.fuchsia})`}}/>
+        </div>}
+      </div>
+    </div>
+
+    {/* Unlock CTA */}
+    {unlocked&&(
+      <button onClick={()=>setShowReport(true)}
+        className="w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 mb-4"
+        style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white",cursor:"pointer",boxShadow:`0 8px 30px ${C.primary}40`}}>
+        🏆 View Full Placement Report →
+      </button>
+    )}
+
+    {/* Checklist */}
+    <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Completion Checklist</div>
+    <div className="flex flex-col gap-2">
+      {ITEMS.map(item=>(
+        <div key={item.k} className="flex items-center gap-3 p-3.5 rounded-xl"
+          style={{background:item.done?C.green+"12":C.card,border:`1px solid ${item.done?C.green+"44":C.border}`}}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{background:item.done?C.green+"22":C.card2,border:`1px solid ${item.done?C.green+"44":C.border}`}}>
+            {item.done?<Check size={16} style={{color:C.green}}/>:<span style={{fontSize:16}}>{item.icon}</span>}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div style={{color:item.done?C.green:C.text,fontWeight:600,fontSize:13,textDecoration:item.done?"line-through":"none"}}>{item.label}</div>
+            {!item.done&&<div style={{color:C.muted,fontSize:11,marginTop:1}}>{item.hint}</div>}
+          </div>
+          <div className="flex-shrink-0 text-xs font-black px-2 py-1 rounded-lg"
+            style={{background:item.done?C.green+"22":C.card2,color:item.done?C.green:C.muted,border:`1px solid ${item.done?C.green+"33":C.border}`}}>
+            +{item.pts}
+          </div>
+        </div>
+      ))}
+    </div>
+
+    {/* What unlocks */}
+    {!unlocked&&(
+      <div className="mt-4 p-4 rounded-xl" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Unlock at 80%</div>
+        {[{icon:"📊",label:"Full placement report",sub:"Every school ranked with detailed fit breakdown"},
+          {icon:"🎯",label:"Recruitability analysis",sub:"Dream, Reach, Target, and Likely schools identified"},
+          {icon:"📈",label:"Development gap map",sub:"What needs to improve to reach the next tier"},
+        ].map((f,i)=>(
+          <div key={i} className="flex items-center gap-3 mb-3 last:mb-0">
+            <div style={{fontSize:18,flexShrink:0}}>{f.icon}</div>
+            <div><div style={{color:C.text,fontSize:13,fontWeight:600}}>{f.label}</div><div style={{color:C.muted,fontSize:11}}>{f.sub}</div></div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>;
+}
+
+function PlacementReport({athlete,board,pl,plN,onBack}){
+  const a1a2=board.filter(s=>["A1","A2"].includes(getBand(s.score).band));
+  const b1b2=board.filter(s=>["B1","B2"].includes(getBand(s.score).band));
+  const lowPri=board.filter(s=>["C","D"].includes(getBand(s.score).band));
+  const topScore=board[0]?.score||0;
+  const avgScore=board.length?Math.round(board.reduce((a,s)=>a+s.score,0)/board.length):0;
+
+  return<div>
+    <button onClick={onBack} className="flex items-center gap-2 mb-5 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}>
+      <ArrowLeft size={14}/>Back to Progress
+    </button>
+
+    {/* Hero */}
+    <div className="rounded-2xl p-6 mb-5 relative overflow-hidden text-center"
+      style={{background:`linear-gradient(135deg,${C.primary}90,${C.fuchsia}50)`,border:`1px solid ${C.primary}60`}}>
+      <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)",backgroundSize:"12px 12px"}}/>
+      <div className="relative">
+        <div style={{fontSize:36,marginBottom:8}}>🏆</div>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:13,color:"rgba(255,255,255,0.6)",letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Full Placement Report</div>
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:30,fontWeight:800,color:"white",lineHeight:1.1,marginBottom:4}}>{athlete.name}</div>
+        <div style={{color:"rgba(255,255,255,0.65)",fontSize:13}}>{athlete.position}·{athlete.height}·Class of {athlete.grad_year||athlete.gradYear}</div>
+        <div className="flex justify-center gap-3 mt-4">
+          <PLBadge level={pl}/>
+          <Badge color={C.gold}>GPA {athlete.gpa}</Badge>
+        </div>
+      </div>
+    </div>
+
+    {/* Stats row */}
+    <div className="grid grid-cols-3 gap-3 mb-5">
+      {[{label:"Schools",val:board.length,col:C.primary},{label:"Top Score",val:topScore,col:getBand(topScore).color},{label:"Avg Score",val:avgScore,col:C.fuchsia}].map(({label,val,col})=>(
+        <div key={label} className="rounded-xl p-3 text-center" style={{background:C.card,border:`1px solid ${C.border}`}}>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:col,lineHeight:1}}>{val}</div>
+          <div style={{color:C.muted,fontSize:10,marginTop:2}}>{label}</div>
+        </div>
+      ))}
+    </div>
+
+    {/* Priority schools */}
+    {a1a2.length>0&&(
+      <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full" style={{background:C.green}}/>
+          <div style={{color:C.green,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>Priority Schools — Push Now</div>
+        </div>
+        {a1a2.map(s=><SchoolReportRow key={s.id} school={s} athlete={athlete} plN={plN}/>)}
+      </div>
+    )}
+
+    {/* Real fits */}
+    {b1b2.length>0&&(
+      <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full" style={{background:C.gold}}/>
+          <div style={{color:C.gold,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>Real Fits — Keep Active</div>
+        </div>
+        {b1b2.map(s=><SchoolReportRow key={s.id} school={s} athlete={athlete} plN={plN}/>)}
+      </div>
+    )}
+
+    {/* Low priority */}
+    {lowPri.length>0&&(
+      <div className="rounded-2xl p-5 mb-4" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full" style={{background:C.muted}}/>
+          <div style={{color:C.muted,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>Low Priority — Monitor Only</div>
+        </div>
+        {lowPri.map(s=><SchoolReportRow key={s.id} school={s} athlete={athlete} plN={plN}/>)}
+      </div>
+    )}
+
+    {/* Development gap */}
+    <div className="rounded-2xl p-5" style={{background:C.card,border:`1px solid ${C.border}`}}>
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Development Gap Map</div>
+      <div style={{color:C.muted,fontSize:12,marginBottom:12}}>Factors scoring below 6 across your board — these are the areas to develop to improve placement scores.</div>
+      {(() => {
+        const allFactors=Object.keys(FACTOR_LABELS);
+        const gaps=allFactors.map(k=>{
+          const vals=board.map(s=>(s.factors||{})[k]||0);
+          const avg=vals.length?Math.round(vals.reduce((a,v)=>a+v,0)/vals.length):0;
+          return{k,label:FACTOR_LABELS[k],avg};
+        }).filter(f=>f.avg<7).sort((a,b)=>a.avg-b.avg);
+        if(gaps.length===0)return<div style={{color:C.green,fontSize:13,fontWeight:600}}>✅ No major gaps — all factors averaging 7+</div>;
+        return gaps.map(f=>{
+          const c=f.avg>=6?C.gold:f.avg>=4?"#EA7316":C.red;
+          return<div key={f.k} className="mb-3 last:mb-0">
+            <div className="flex items-center justify-between mb-1">
+              <span style={{color:C.text,fontSize:12,fontWeight:600}}>{f.label}</span>
+              <span style={{color:c,fontSize:12,fontWeight:700}}>{f.avg}/10 avg</span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{background:C.border}}>
+              <div style={{width:`${f.avg*10}%`,height:"100%",background:c,borderRadius:9999,transition:"width 0.4s"}}/>
+            </div>
+          </div>;
+        });
+      })()}
+    </div>
+  </div>;
+}
+
+function SchoolReportRow({school,athlete,plN}){
+  const{band,color}=getBand(school.score);
+  const tN=parseInt((school.tier||"T3").replace("T",""));
+  const rec=getRecruit(plN,tN,school.score);
+  return<div className="flex items-center gap-3 mb-3 last:mb-0 p-3 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+    <ScoreRing score={school.score} size={52}/>
+    <div className="flex-1 min-w-0">
+      <div style={{color:C.text,fontWeight:700,fontSize:14,lineHeight:1.2}}>{school.school}</div>
+      <div style={{color:C.muted,fontSize:11,marginTop:2}}>{school.conference}</div>
+      <div className="flex flex-wrap gap-1 mt-1.5">
+        <TierBadge tier={school.tier||"T3"}/>
+        <Badge color={color}>{rec}</Badge>
+        {(school.has_offer||school.hasOffer)&&<Badge color={C.green}>✓ Offer</Badge>}
+      </div>
+    </div>
+    <div className="text-right flex-shrink-0">
+      <div style={{color:color,fontSize:10,fontWeight:700,letterSpacing:1}}>BAND</div>
+      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color,lineHeight:1}}>{band}</div>
+    </div>
+  </div>;
+}
+
+// ── COMPARE VIEW ──────────────────────────────────────────────────────────────
+const FACTOR_WEIGHTS_DISPLAY={bbLevel:25,opportunity:20,athletic:15,skill:15,academic:10,style:5,geo:5,relationship:5};
+const COMPARE_LABELS={bbLevel:"BB Level",opportunity:"Opportunity",athletic:"Athletic Fit",skill:"Skill Fit",academic:"Academic",style:"Style of Play",geo:"Geography",relationship:"Relationship"};
+
+function CompareView({athlete,board}){
+  const scored=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score);
+  const[idA,setIdA]=useState(scored[0]?.id||"");const[idB,setIdB]=useState(scored[1]?.id||"");const[hovered,setHovered]=useState(null);
+  const sA=scored.find(s=>s.id===idA);const sB=scored.find(s=>s.id===idB);
+  if(board.length<2)return<div className="rounded-2xl p-10 text-center" style={{background:C.card,border:`1px dashed ${C.border}`}}><div style={{fontSize:32,marginBottom:12}}>⚖️</div><div style={{color:C.text,fontWeight:700,marginBottom:4}}>Add 2+ schools to compare</div><div style={{color:C.muted,fontSize:13}}>Head to the Schools tab and add at least two schools to your board first.</div></div>;
+  const pl=athlete.player_level||athlete.playerLevel||"PL3";
+  const plN=parseInt(pl.replace("PL",""));
+  const cA=sA?getBand(sA.score).color:C.muted;const cB=sB?getBand(sB.score).color:C.muted;
+  const winner=sA&&sB?(sA.score>sB.score?"A":sA.score<sB.score?"B":"tie"):"tie";
+  return<div>
+    <div style={{color:C.muted,fontSize:12,marginBottom:16}}>Compare two schools side-by-side to see exactly where one beats the other.</div>
+    <div className="grid grid-cols-2 gap-3 mb-5">
+      {[{id:idA,setId:setIdA,col:cA,school:sA},{id:idB,setId:setIdB,col:cB,school:sB}].map((s,i)=>(
+        <div key={i}>
+          <select value={s.id} onChange={e=>s.setId(e.target.value)} className="w-full px-3 py-2 rounded-xl text-xs font-bold outline-none mb-2" style={{background:C.card2,border:`1px solid ${s.col}44`,color:s.col,cursor:"pointer"}}>
+            {scored.filter(sc=>s.id===sc.id||sc.id!==(i===0?idB:idA)).map(sc=><option key={sc.id} value={sc.id}>{sc.school}</option>)}
+          </select>
+          {s.school&&<div className="rounded-xl p-3 text-center" style={{background:s.col+"12",border:`1px solid ${s.col}33`}}>
+            <ScoreRing score={s.school.score} size={56}/>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",color:C.text,fontSize:15,fontWeight:800,marginTop:6,lineHeight:1}}>{s.school.school}</div>
+            <div style={{color:C.muted,fontSize:11,marginTop:2}}>{s.school.conference}</div>
+            <div className="flex justify-center gap-1 mt-2 flex-wrap"><TierBadge tier={s.school.tier||"T3"}/></div>
+            <div style={{color:s.col,fontSize:11,fontWeight:700,marginTop:4}}>{getRecruit(plN,parseInt((s.school.tier||"T3").replace("T","")),s.school.score)}</div>
+          </div>}
+        </div>
+      ))}
+    </div>
+    {sA&&sB&&<>
+      <div className="flex items-center gap-3 mb-3 p-3 rounded-xl" style={{background:C.card,border:`1px solid ${C.border}`}}>
+        <div className="flex-1 text-center"><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:38,fontWeight:800,color:cA,lineHeight:1}}>{sA.score}</div><div style={{color:C.muted,fontSize:10}}>Score</div></div>
+        <div style={{color:C.muted,fontSize:11,fontWeight:700}}>VS</div>
+        <div className="flex-1 text-center"><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:38,fontWeight:800,color:cB,lineHeight:1}}>{sB.score}</div><div style={{color:C.muted,fontSize:10}}>Score</div></div>
+      </div>
+      {winner!=="tie"&&<div className="p-3 rounded-xl mb-4 text-center text-sm font-bold" style={{background:(winner==="A"?cA:cB)+"15",border:`1px solid ${(winner==="A"?cA:cB)}33`,color:winner==="A"?cA:cB}}>
+        🏆 {winner==="A"?sA.school:sB.school} is the stronger fit by {Math.abs(sA.score-sB.score)} points
+      </div>}
+      <div style={{color:C.muted,fontSize:10,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Factor Breakdown</div>
+      <div className="flex flex-col gap-1.5">
+        {Object.entries(COMPARE_LABELS).map(([k,label])=>{
+          const vA=(sA.factors||{})[k]||0,vB=(sB.factors||{})[k]||0;const winA=vA>vB,winB=vB>vA;
+          return<div key={k} className="p-2.5 rounded-xl transition-all" style={{background:hovered===k?C.card2:C.card,border:`1px solid ${C.border}`}} onMouseEnter={()=>setHovered(k)} onMouseLeave={()=>setHovered(null)}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <div style={{color:winA?cA:C.muted,fontSize:12,fontWeight:winA?700:400,flex:1,textAlign:"right"}}>{vA}/10</div>
+              <div style={{color:C.sub,fontSize:10,fontWeight:600,width:88,textAlign:"center",flexShrink:0}}>{label}</div>
+              <div style={{color:winB?cB:C.muted,fontSize:12,fontWeight:winB?700:400,flex:1}}>{vB}/10</div>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden flex justify-end" style={{background:C.border}}><div style={{width:`${vA*10}%`,height:"100%",background:winA?cA:C.muted+"55",borderRadius:9999,transition:"width 0.3s"}}/></div>
+              <div className="w-1 h-1 rounded-full flex-shrink-0" style={{background:C.border}}/>
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{background:C.border}}><div style={{width:`${vB*10}%`,height:"100%",background:winB?cB:C.muted+"55",borderRadius:9999,transition:"width 0.3s"}}/></div>
+            </div>
+          </div>;
+        })}
+      </div>
+    </>}
+  </div>;
+}
+
+// ── CALENDAR VIEW ─────────────────────────────────────────────────────────────
+const CALENDAR_EVENTS=[
+  {date:"Apr 1",month:"APR",day:"1",label:"Spring Evaluation Period Opens",type:"active",detail:"College coaches can attend spring events, tournaments, and practices. This is a prime visibility window. Make sure your athlete is competing at high-level spring events.",division:"D-I NCAA"},
+  {date:"Apr 15",month:"APR",day:"15",label:"EYBL / AAU Season Opens",type:"event",detail:"Nike EYBL Circuit and major AAU programs begin their seasons. The highest-visibility club events of the spring. Every major D-I staff will have evaluators on the road.",division:"Club Season"},
+  {date:"May 1",month:"MAY",day:"1",label:"Quiet Period Begins",type:"restricted",detail:"Coaches may make recruiting calls but cannot visit recruits off-campus or attend events. Focus on phone calls, video calls, and sending updated film.",division:"D-I NCAA"},
+  {date:"Jun 1",month:"JUN",day:"1",label:"Contact Period Opens",type:"active",detail:"Coaches may contact recruits off-campus. Official visits can begin. This is when most relationships accelerate — expect more frequent contact from schools of interest.",division:"D-I NCAA"},
+  {date:"Jun 12",month:"JUN",day:"12",label:"Peach Jam / EYBL Nationals",type:"event",detail:"The most-watched grassroots event of the year. Every major D-I program will have head coaches or assistants in attendance. Performing well here can dramatically change a player's offer board.",division:"Club — EYBL"},
+  {date:"Jul 1",month:"JUL",day:"1",label:"Summer Evaluation Period",type:"active",detail:"The most critical 4-week window of the recruiting calendar. More offers are extended during July than any other month. Staff should be maximizing athlete visibility at NCAA-certified events.",division:"D-I NCAA"},
+  {date:"Jul 31",month:"JUL",day:"31",label:"Summer Evaluation Ends",type:"restricted",detail:"Coaches return to campus. The evaluation period closes. If your athlete hasn't received attention from a program by now, focus on fall events and updated film to re-engage.",division:"D-I NCAA"},
+  {date:"Sep 1",month:"SEP",day:"1",label:"Official Visit Window Opens",type:"active",detail:"Athletes can begin taking official paid campus visits to programs. Schools cover travel, housing, and meals. This signals serious mutual interest. Prioritize visits to schools on the board.",division:"D-I NCAA"},
+  {date:"Nov 8",month:"NOV",day:"8",label:"Early Signing Period",type:"event",detail:"Athletes can sign National Letters of Intent. Most top recruits sign during this window. Once signed, the recruiting process is officially complete.",division:"D-I NCAA"},
+  {date:"Apr 16",month:"APR",day:"16",label:"National Signing Day (Spring)",type:"event",detail:"Final signing period for athletes who did not sign in November. Late decisions, transfers, and late bloomers who received offers after the early period.",division:"D-I NCAA"},
+];
+const TYPE_STYLE={active:{bg:"#22C55E",label:"Active Window"},restricted:{bg:"#F5A623",label:"Restricted"},event:{bg:"#602F96",label:"Key Event"}};
+
+function CalendarView(){
+  const[selected,setSelected]=useState(null);const[filter,setFilter]=useState("all");
+  const filtered=CALENDAR_EVENTS.filter(e=>filter==="all"||(filter==="windows"&&e.type!=="event")||(filter==="events"&&e.type==="event"));
+  return<div>
+    <div style={{color:C.muted,fontSize:12,marginBottom:14}}>NCAA recruiting calendar for the 2025–26 cycle. Tap any event for details.</div>
+    <div className="flex gap-2 flex-wrap mb-4">
+      {Object.entries(TYPE_STYLE).map(([type,s])=><div key={type} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{background:s.bg+"18",border:`1px solid ${s.bg}33`}}><div className="w-2 h-2 rounded-full" style={{background:s.bg}}/><span style={{color:s.bg,fontSize:10,fontWeight:700}}>{s.label}</span></div>)}
+    </div>
+    <div className="flex gap-2 mb-5">
+      {[{v:"all",l:"All"},{v:"windows",l:"NCAA Windows"},{v:"events",l:"Key Events"}].map(f=>(
+        <button key={f.v} onClick={()=>setFilter(f.v)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{background:filter===f.v?C.primary:C.card2,color:filter===f.v?"white":C.muted,border:`1px solid ${filter===f.v?C.primary:C.border}`,cursor:"pointer"}}>{f.l}</button>
+      ))}
+    </div>
+    <div className="relative">
+      <div className="absolute left-7 top-0 bottom-0 w-px" style={{background:C.border}}/>
+      <div className="flex flex-col gap-2">
+        {filtered.map((e,i)=>{
+          const s=TYPE_STYLE[e.type];const isOpen=selected===i;
+          return<button key={i} onClick={()=>setSelected(isOpen?null:i)} className="relative flex items-start gap-4 text-left w-full" style={{cursor:"pointer"}}>
+            <div className="w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0 z-10 font-black" style={{background:s.bg+"20",border:`2px solid ${s.bg}55`,color:s.bg}}>
+              <div style={{fontSize:9,fontWeight:800,letterSpacing:1}}>{e.month}</div>
+              <div style={{fontSize:20,lineHeight:1}}>{e.day}</div>
+            </div>
+            <div className={`flex-1 p-3.5 rounded-xl transition-all`} style={{background:isOpen?s.bg+"15":C.card,border:`1px solid ${isOpen?s.bg+"55":C.border}`}}>
+              <div className="flex items-start justify-between gap-2">
+                <div style={{color:C.text,fontWeight:700,fontSize:13,lineHeight:1.3}}>{e.label}</div>
+                <span className="px-2 py-0.5 rounded-md text-xs font-bold flex-shrink-0" style={{background:s.bg+"20",color:s.bg,border:`1px solid ${s.bg}33`}}>{e.division}</span>
+              </div>
+              {isOpen&&<div style={{color:C.sub,fontSize:12,marginTop:8,lineHeight:1.6}}>{e.detail}</div>}
+            </div>
+          </button>;
+        })}
+      </div>
+    </div>
+  </div>;
+}
+
+// ── PARENT VIEW ───────────────────────────────────────────────────────────────
+function ParentView({sb,session,profile,displayName}){
+  const[athlete,setAthlete]=useState(null);const[board,setBoard]=useState([]);const[feed,setFeed]=useState([]);const[tab,setTab]=useState("dashboard");const[loading,setLoading]=useState(true);const[err,setErr]=useState("");
+  const athleteId=profile?.athlete_id;
+  useEffect(()=>{if(athleteId)load();},[athleteId]);
+  const load=async()=>{
+    setLoading(true);
+    const{data:a,error}=await sb.from("athletes").select("*").eq("id",athleteId).single();
+    if(error||!a){setErr("Could not load athlete data. Contact your coaching staff.");setLoading(false);return;}
+    setAthlete(a);
+    const{data:bd}=await sb.from("school_boards").select("*").eq("athlete_id",athleteId).order("created_at");
+    setBoard(bd||[]);
+    const{data:fd}=await sb.from("activity_feed").select("*").eq("athlete_id",athleteId).order("created_at",{ascending:false}).limit(10);
+    setFeed(fd||[]);
+    setLoading(false);
+  };
+  const logActivity=async(type,message,meta={})=>{
+    if(!athleteId)return;
+    await sb.from("activity_feed").insert({athlete_id:athleteId,actor_id:session.user.id,actor_name:displayName||session.user.email,type,message,meta});
+    const{data}=await sb.from("activity_feed").select("*").eq("athlete_id",athleteId).order("created_at",{ascending:false}).limit(10);
+    setFeed(data||[]);
+  };
+  const saveAthlete=async(updated)=>{
+    const{error}=await sb.from("athletes").update({gpa:updated.gpa,height:updated.height,strengths:updated.strengths,development_needs:updated.development_needs,recruiting_story:updated.recruiting_story,offers:updated.offers,highlight_link:updated.highlight_link,visibility_score:updated.visibility_score}).eq("id",athleteId);
+    if(!error){setAthlete(a=>({...a,...updated}));await logActivity("profile_updated","Family updated athlete profile");}
+  };
+  const addSchool=async(s)=>{
+    const{data,error}=await sb.from("school_boards").insert({...s,athlete_id:athleteId,created_by:session.user.id,updated_by:session.user.id}).select().single();
+    if(!error&&data){setBoard(b=>[...b,data]);await logActivity("school_added",`Added ${s.school} to board (Score: ${calcScore(s.factors)}/100)`,{school:s.school});}
+  };
+  const updateSchool=async(s)=>{
+    const{error}=await sb.from("school_boards").update({...s,updated_by:session.user.id}).eq("id",s.id);
+    if(!error){setBoard(b=>b.map(e=>e.id===s.id?{...e,...s}:e));await logActivity("score_updated",`Updated fit factors for ${s.school}`,{school:s.school,score:calcScore(s.factors||{})});}
+  };
+  const removeSchool=async(id)=>{
+    const s=board.find(e=>e.id===id);
+    await sb.from("school_boards").delete().eq("id",id);
+    setBoard(b=>b.filter(e=>e.id!==id));
+    if(s)await logActivity("school_removed",`Removed ${s.school} from board`);
+  };
+  if(loading)return<div className="flex items-center justify-center py-20"><Spinner size={24}/></div>;
+  if(err)return<div className="p-4"><Alert type="error">{err}</Alert></div>;
+  if(!athlete)return null;
+  // For progress dot on nav
+  const PROG_ITEMS=[
+    !!(athlete.gpa&&athlete.gpa!==""),
+    !!(athlete.highlight_link||athlete.highlightLink),
+    board.length>=3,
+    !!(athlete.recruiting_story||athlete.recruitingStory),
+    !!(athlete.strengths&&athlete.strengths!==""),
+    (athlete.visibility_score||0)>0,
+    (athlete.offers||[]).length>0||board.some(s=>s.has_offer||s.hasOffer),
+  ];
+  const progPts=[15,20,20,15,10,10,10];
+  const progEarned=PROG_ITEMS.reduce((s,done,i)=>s+(done?progPts[i]:0),0);
+  const progMax=progPts.reduce((a,b)=>a+b,0);
+  const progPct=Math.round((progEarned/progMax)*100);
+
+  return<>
+    {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={feed}/>}
+    {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={false} onSave={saveAthlete}/>}
+    {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={false} onAdd={addSchool} onUpdate={updateSchool} onRemove={removeSchool}/>}
+    {tab==="progress"&&<ProgressView athlete={athlete} board={board}/>}
+    {tab==="compare"&&<CompareView athlete={athlete} board={board}/>}
+    {tab==="calendar"&&<CalendarView/>}
+    <div className="fixed bottom-0 left-0 right-0 flex justify-around items-center py-1.5 px-1" style={{background:`${C.card}F8`,borderTop:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
+      {[
+        {id:"dashboard",label:"Home",    Ic:Home},
+        {id:"athlete",  label:"Athlete", Ic:UserIcon},
+        {id:"schools",  label:"Schools", Ic:School},
+        {id:"progress", label:"Progress",Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,dot:progPct<80&&progPct>0},
+        {id:"compare",  label:"Compare", Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>},
+        {id:"calendar", label:"Calendar",Ic:({size,...p})=><svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>},
+      ].map(({id,label,Ic,dot})=>{
+        const active=tab===id;
+        return<button key={id} onClick={()=>setTab(id)} className="relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl" style={{color:active?C.fuchsia:C.muted,background:active?C.fuchsia+"18":"transparent",cursor:"pointer",minWidth:44}}>
+          <Ic size={17}/>
+          <span style={{fontSize:9,fontWeight:600}}>{label}</span>
+          {dot&&<div className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full" style={{background:C.gold}}/>}
+        </button>;
+      })}
+    </div>
+  </>;
+}
+
+// ── LOADING SCREEN ────────────────────────────────────────────────────────────
+function LoadingScreen({msg="Loading portal…"}){
+  return<div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{background:C.bg}}>
+    <div className="w-14 h-14 rounded-2xl overflow-hidden" style={{background:"#1C1530"}}><img src="data:image/png;base64,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" alt="Scholars Elite" style={{width:56,height:56,objectFit:"cover"}}/></div>
+    <Spinner size={22}/>
+    <div style={{color:C.muted,fontSize:12}}>{msg}</div>
+  </div>;
+}
+
+// ── APP ROOT ──────────────────────────────────────────────────────────────────
+function App(){
+  const[cfg,setCfg]=useState(null);
+  const[cfgLoaded,setCfgLoaded]=useState(false);
+  const[sb,setSb]=useState(null);
+  const[session,setSession]=useState(undefined);// undefined=loading, null=no session
+  const[profile,setProfile]=useState(null);
+  const[onboarded,setOnboarded]=useState({});
+  const[showOnboarding,setShowOnboarding]=useState(false);
+  const[onboardAthlete,setOnboardAthlete]=useState(null);
+  const[onboardBoard,setOnboardBoard]=useState([]);
+
+  // Auto-connect using hardcoded credentials — no setup screen needed
+  useEffect(()=>{
+    try{const o=JSON.parse(localStorage.getItem(ONBOARD_KEY)||"{}");setOnboarded(o);}catch{}
+    setCfg({url:SUPABASE_URL,key:SUPABASE_KEY});
+    setCfgLoaded(true);
+  },[]);
+
+  // Init Supabase
+  useEffect(()=>{
+    if(!cfg)return;
+    const client=createClient(cfg.url,cfg.key);
+    setSb(client);
+    client.auth.getSession().then(({data:{session}})=>setSession(session));
+    const{data:{subscription}}=client.auth.onAuthStateChange((_,s)=>setSession(s));
+    return()=>subscription?.unsubscribe();
+  },[cfg]);
+
+  // Load profile when session changes
+  useEffect(()=>{
+    if(!sb||!session){setProfile(null);return;}
+    sb.from("profiles").select("*").eq("id",session.user.id).single().then(({data})=>setProfile(data));
+  },[session,sb]);
+
+  // Check onboarding trigger for parents
+  useEffect(()=>{
+    if(!profile||!session||profile.role==="staff")return;
+    const email=session.user.email;
+    if(!onboarded[email]&&profile.athlete_id){
+      // Load athlete + board for onboarding preview
+      sb.from("athletes").select("*").eq("id",profile.athlete_id).single().then(({data:ath})=>{
+        if(ath){
+          sb.from("school_boards").select("*").eq("athlete_id",profile.athlete_id).limit(5).then(({data:bd})=>{
+            setOnboardAthlete(ath);
+            setOnboardBoard(bd||[]);
+            setShowOnboarding(true);
+          });
+        }
+      });
+    }
+  },[profile]);
+
+  const saveCfg=(url,key)=>{
+    const c={url,key};setCfg(c);
+    try{localStorage.setItem(CFG_KEY,JSON.stringify(c));}catch{}
+  };
+
+  const clearCfg=()=>{
+    setCfg(null);setSb(null);setSession(undefined);setProfile(null);
+    try{localStorage.removeItem(CFG_KEY);}catch{}
+  };
+
+  const signOut=async()=>{
+    await sb?.auth.signOut();
+  };
+
+  const completeOnboarding=()=>{
+    const email=session?.user?.email;
+    if(!email)return;
+    const updated={...onboarded,[email]:true};
+    setOnboarded(updated);setShowOnboarding(false);
+    try{localStorage.setItem(ONBOARD_KEY,JSON.stringify(updated));}catch{}
+  };
+
+  const displayName=profile?.display_name||session?.user?.email||"";
+  const isStaff=profile?.role==="staff";
+
+  // Loading states
+  if(!cfgLoaded||!sb||session===undefined||(!profile&&session))return<LoadingScreen msg="Loading portal…"/>;
+  if(!session)return<AuthScreen sb={sb}/>;
+
+  // Onboarding
+  if(showOnboarding&&onboardAthlete)return<OnboardingFlow userName={displayName} athlete={onboardAthlete} board={onboardBoard} onComplete={completeOnboarding}/>;
+
+  return<div style={{minHeight:"100vh",background:C.bg}}>
+    {/* Topbar */}
+    <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3" style={{background:`${C.card}F2`,borderBottom:`1px solid ${C.border}`,backdropFilter:"blur(16px)"}}>
+      <div className="flex items-center gap-2.5">
+        <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0" style={{background:"#1C1530"}}><img src="data:image/png;base64,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" alt="Scholars Elite" style={{width:36,height:36,objectFit:"cover"}}/></div>
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:14,fontWeight:800,color:C.text,letterSpacing:1,lineHeight:1}}>SCHOLARS ELITE</div>
+          <div style={{fontSize:9,color:isStaff?C.fuchsia:C.muted,fontWeight:isStaff?700:400}}>{isStaff?"⚡ STAFF VIEW":displayName}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={signOut} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold" style={{color:C.muted,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>{e.currentTarget.style.background=C.border;e.currentTarget.style.color=C.text;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.muted;}}><LogOut size={13}/>Sign Out</button>
+      </div>
+    </div>
+
+    {/* Main content */}
+    <div style={{maxWidth:560,margin:"0 auto",padding:"20px 16px "+(isStaff?"40px":"100px")}}>
+      {isStaff
+        ?<StaffView sb={sb} session={session} displayName={displayName}/>
+        :<ParentView sb={sb} session={session} profile={profile} displayName={displayName}/>
+      }
+    </div>
+  </div>;
+}
+
+export default App;

@@ -1,20 +1,19 @@
 -- ============================================================
--- SCHOLARS ELITE — FULL ROSTER SEED v2 (32 players, 3 teams)
--- Handles existing records safely
+-- SCHOLARS ELITE — FULL ROSTER SEED v3
+-- Handles all duplicate/conflict scenarios cleanly
 -- ============================================================
 
--- 1. Add team column if not present
-ALTER TABLE athletes ADD COLUMN IF NOT EXISTS team text default '17U';
+-- 1. Add team column if missing
+ALTER TABLE athletes ADD COLUMN IF NOT EXISTS team text DEFAULT '17U';
 
--- 2. Temporarily drop the access_code unique constraint
---    so we can upsert without collision errors
+-- 2. Drop the unique constraint so upserts don't collide
 ALTER TABLE athletes DROP CONSTRAINT IF EXISTS athletes_access_code_key;
 
 -- 3. Upsert all 32 players
 INSERT INTO athletes
   (id, name, grad_year, position, height, archetype, gpa, player_level,
-   strengths, development_needs, recruiting_story, offers, highlight_link,
-   visibility_score, access_code, status, team)
+   strengths, development_needs, recruiting_story, offers,
+   highlight_link, visibility_score, access_code, status, team)
 VALUES
   ('kassidy','Kassidy Ahmad','2029','G','5''7','Pressure Guard','','PL2','Transition finisher — converts steals to buckets at elite rate Pace push in secondary break Playmaking IQ elevates teammates in open court','Half-court creation off the dribble Shooting volume reps at college range Finishing at rim against length','Kassidy Ahmad is the rarest profile in the 2029 class — a pressure guard who creates chaos on defense and immediately converts it into offense. Her 4.9 SPG is a system disruptor. At 5 ft 7 with elite first-step quickness and anticipatory instincts, she reads passing lanes before the ball is released','{}','',5,'AHMAD2026','active','16U'),
   ('abria_h','Abria Hason','2028','G/F','5''8','Two-Way Wing / Secondary Scorer','','PL4','','','Complementary wing with scoring pop — 5.1 PPG, 3.2 RPG, 0.9 SPG with an 18-point season high. Useful two-way profile with size for the spot at Bishop Eustace.','{}','',5,'ABRIAH2026','active','16U'),
@@ -49,24 +48,36 @@ VALUES
   ('sara_g','Sara Guveiyian','2029','SG','','Shooting Guard','','PL4','','','','{}','',5,'SARAG2026','active','15U'),
   ('taylor_t','Taylor Tucker','2029','G','','Young Contributor','','PL4','','','','{}','',5,'TAYLORT2026','active','15U')
 ON CONFLICT (id) DO UPDATE SET
-  name             = EXCLUDED.name,
-  grad_year        = EXCLUDED.grad_year,
-  position         = EXCLUDED.position,
-  height           = EXCLUDED.height,
-  archetype        = EXCLUDED.archetype,
-  player_level     = EXCLUDED.player_level,
-  strengths        = EXCLUDED.strengths,
-  development_needs= EXCLUDED.development_needs,
-  recruiting_story = EXCLUDED.recruiting_story,
-  highlight_link   = EXCLUDED.highlight_link,
-  access_code      = EXCLUDED.access_code,
-  team             = EXCLUDED.team;
+  name              = EXCLUDED.name,
+  grad_year         = EXCLUDED.grad_year,
+  position          = EXCLUDED.position,
+  height            = EXCLUDED.height,
+  archetype         = EXCLUDED.archetype,
+  player_level      = EXCLUDED.player_level,
+  strengths         = EXCLUDED.strengths,
+  development_needs = EXCLUDED.development_needs,
+  recruiting_story  = EXCLUDED.recruiting_story,
+  highlight_link    = EXCLUDED.highlight_link,
+  access_code       = EXCLUDED.access_code,
+  team              = EXCLUDED.team;
 
--- 4. Re-add the unique constraint
+-- 4. Deduplicate any duplicate access codes before recreating constraint
+--    (keeps the row with the longer/more complete name)
+UPDATE athletes
+SET access_code = id || '_2026'
+WHERE id IN (
+  SELECT a1.id
+  FROM athletes a1
+  INNER JOIN athletes a2
+    ON a1.access_code = a2.access_code
+   AND a1.id > a2.id
+);
+
+-- 5. Now safely recreate the unique constraint
 ALTER TABLE athletes
   ADD CONSTRAINT athletes_access_code_key UNIQUE (access_code);
 
--- 5. Add staff_messages table
+-- 6. Staff messages table
 CREATE TABLE IF NOT EXISTS public.staff_messages (
   id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   athlete_id        text REFERENCES athletes(id) ON DELETE CASCADE NOT NULL,
@@ -76,23 +87,16 @@ CREATE TABLE IF NOT EXISTS public.staff_messages (
   visible_to_family boolean DEFAULT true,
   created_at        timestamptz DEFAULT now()
 );
-
 ALTER TABLE public.staff_messages ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "messages: staff insert"  ON staff_messages;
 DROP POLICY IF EXISTS "messages: staff select"  ON staff_messages;
 DROP POLICY IF EXISTS "messages: parent select" ON staff_messages;
-
-CREATE POLICY "messages: staff insert" ON staff_messages FOR INSERT WITH CHECK (
-  public.get_my_role() = 'staff'
-);
-CREATE POLICY "messages: staff select" ON staff_messages FOR SELECT USING (
-  public.get_my_role() = 'staff'
-);
+CREATE POLICY "messages: staff insert" ON staff_messages FOR INSERT WITH CHECK (public.get_my_role() = 'staff');
+CREATE POLICY "messages: staff select" ON staff_messages FOR SELECT USING (public.get_my_role() = 'staff');
 CREATE POLICY "messages: parent select" ON staff_messages FOR SELECT USING (
   (SELECT athlete_id FROM profiles WHERE id = auth.uid()) = staff_messages.athlete_id
   AND visible_to_family = true
 );
 
--- 6. Verify — you should see 15U/16U/17U with player counts
+-- 7. Verify — should show 3 rows
 SELECT team, count(*) AS players FROM athletes GROUP BY team ORDER BY team;

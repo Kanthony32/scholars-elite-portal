@@ -1494,22 +1494,40 @@ function App(){
     return()=>subscription?.unsubscribe();
   },[cfg]);
 
-  // Load profile when session changes — auto-create if missing
+  // Load profile — with 4s timeout fallback so it never hangs
   useEffect(()=>{
     if(!sb||!session){setProfile(null);return;}
-    sb.from("profiles").select("*").eq("id",session.user.id).single().then(async({data,error})=>{
-      if(data){
-        setProfile(data);
-      } else {
-        // Profile row missing — create it now (happens when trigger didn't fire at signup)
-        const role=session.user.user_metadata?.role||"staff";
-        const display_name=session.user.user_metadata?.display_name||session.user.email;
-        const{data:created}=await sb.from("profiles").upsert({
-          id:session.user.id,role,display_name
-        },{onConflict:"id"}).select().single();
-        setProfile(created||{id:session.user.id,role,display_name,athlete_id:null});
+    let cancelled=false;
+    const role=session.user.user_metadata?.role||"staff";
+    const display_name=session.user.user_metadata?.display_name||session.user.email;
+    const fallback={id:session.user.id,role,display_name,athlete_id:null};
+
+    // Hard timeout — if Supabase doesn't respond in 4s, use fallback profile
+    const timer=setTimeout(()=>{
+      if(!cancelled){cancelled=true;setProfile(fallback);}
+    },4000);
+
+    const load=async()=>{
+      try{
+        // Try reading existing profile
+        const{data}=await sb.from("profiles").select("*").eq("id",session.user.id).maybeSingle();
+        if(cancelled)return;
+        if(data){
+          clearTimeout(timer);setProfile(data);
+        } else {
+          // No profile row — insert it directly (bypasses trigger issues)
+          const{data:created}=await sb.from("profiles")
+            .insert({id:session.user.id,role,display_name})
+            .select().maybeSingle();
+          clearTimeout(timer);
+          setProfile(created||fallback);
+        }
+      }catch(e){
+        if(!cancelled){clearTimeout(timer);setProfile(fallback);}
       }
-    });
+    };
+    load();
+    return()=>{cancelled=true;clearTimeout(timer);};
   },[session,sb]);
 
   // Check onboarding trigger for parents

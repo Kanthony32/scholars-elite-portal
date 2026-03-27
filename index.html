@@ -779,15 +779,41 @@ function StaffView({sb,session,displayName}){
     const board=boards[selected]||[];
     const athleteFeed=feed[selected]||[];
     if(!athlete)return null;
+    const[showCommit,setShowCommit]=useState(false);
+    const[showMessages,setShowMessages]=useState(false);
+    const isCommitted=athlete.status==="committed"||athlete.status==="signed";
     return<div>
-      <button onClick={()=>setSelected(null)} className="flex items-center gap-2 mb-5 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><ArrowLeft size={14}/>Roster</button>
-      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:C.text,marginBottom:10}}>{athlete.name}</div>
+      <button onClick={()=>setSelected(null)} className="flex items-center gap-2 mb-4 text-sm font-bold" style={{color:C.primary,cursor:"pointer"}}><ArrowLeft size={14}/>Roster</button>
+      {/* Athlete header with status */}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:C.text,lineHeight:1}}>{athlete.name}</div>
+          <div style={{color:C.muted,fontSize:12,marginTop:2}}>{athlete.position}·{athlete.height}·Class of {athlete.grad_year}</div>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            <PLBadge level={athlete.player_level||"PL4"}/>
+            {athlete.status==="committed"&&<Badge color={C.green}>🎉 Committed → {athlete.committed_to}</Badge>}
+            {athlete.status==="signed"&&<Badge color={C.gold}>🏆 Signed → {athlete.committed_to}</Badge>}
+          </div>
+        </div>
+        {/* Action buttons */}
+        <div className="flex flex-col gap-2 flex-shrink-0 ml-3">
+          <button onClick={()=>setShowCommit(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold" style={{background:isCommitted?C.gold+"20":`linear-gradient(135deg,${C.green},#16A34A)`,color:isCommitted?C.gold:"white",border:isCommitted?`1px solid ${C.gold}44`:"none",cursor:"pointer"}}>
+            {isCommitted?"✍️ NLI Status":"🎉 Log Commit"}
+          </button>
+          <button onClick={()=>setShowMessages(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold" style={{background:C.primary+"20",color:C.primary,border:`1px solid ${C.primary}33`,cursor:"pointer"}}>
+            📬 Notes
+          </button>
+        </div>
+      </div>
+      {/* Tabs */}
       <div className="flex gap-2 mb-5 pb-4 border-b" style={{borderColor:C.border}}>
         {["dashboard","athlete","schools"].map(t=><button key={t} onClick={()=>{setTab(t);if(t==="dashboard")loadFeed(selected);}} className="px-4 py-2 rounded-xl text-sm font-bold capitalize" style={{background:tab===t?C.primary:C.card2,color:tab===t?"white":C.muted,cursor:"pointer"}}>{t}</button>)}
       </div>
       {tab==="dashboard"&&<Dashboard athlete={athlete} board={board} feed={athleteFeed} isStaff={true}/>}
       {tab==="athlete"&&<AthleteEditor athlete={athlete} isStaff={true} onSave={u=>saveAthlete(selected,u)}/>}
       {tab==="schools"&&<SchoolBoard athlete={athlete} board={board} isStaff={true} onAdd={s=>addSchool(selected,s)} onUpdate={s=>updateSchool(selected,s)} onRemove={id=>removeSchool(selected,id)}/>}
+      {showCommit&&<CommitmentFlow sb={sb} athlete={athlete} board={board} onUpdate={u=>{setAthletes(ats=>ats.map(a=>a.id===u.id?u:a));}} onClose={()=>setShowCommit(false)}/>}
+      {showMessages&&<StaffMessaging sb={sb} session={session} athlete={athlete} displayName={displayName} onClose={()=>setShowMessages(false)}/>}
     </div>;
   }
 
@@ -842,6 +868,195 @@ function StaffView({sb,session,displayName}){
         </div>
       </div>;
     })}
+  </div>;
+}
+
+// ── COMMITMENT FLOW ───────────────────────────────────────────────────────────
+function CommitmentFlow({sb,athlete,board,onUpdate,onClose}){
+  const[phase,setPhase]=useState(athlete.status==="committed"?"committed":athlete.status==="signed"?"signed":"select");
+  const[school,setSchool]=useState(athlete.committed_to||"");
+  const[customSchool,setCustomSchool]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[confirm,setConfirm]=useState(false);
+
+  const topSchools=[...board].map(s=>({...s,score:calcScore(s.factors||{})})).sort((a,b)=>b.score-a.score).slice(0,5);
+
+  const commitVerbal=async()=>{
+    if(!school.trim())return;
+    setSaving(true);
+    const{error}=await sb.from("athletes").update({status:"committed",committed_to:school}).eq("id",athlete.id);
+    if(!error){
+      await sb.from("activity_feed").insert({athlete_id:athlete.id,type:"committed",message:`🎉 ${athlete.name} has verbally committed to ${school}!`,meta:{school},actor_name:"Staff"});
+      onUpdate({...athlete,status:"committed",committed_to:school});
+      setPhase("committed");
+    }
+    setSaving(false);
+  };
+
+  const signNLI=async()=>{
+    setSaving(true);
+    const{error}=await sb.from("athletes").update({status:"signed"}).eq("id",athlete.id);
+    if(!error){
+      await sb.from("activity_feed").insert({athlete_id:athlete.id,type:"signed",message:`🏆 ${athlete.name} has signed her NLI to ${athlete.committed_to||school}!`,meta:{school:athlete.committed_to||school},actor_name:"Staff"});
+      onUpdate({...athlete,status:"signed"});
+      setPhase("signed");
+    }
+    setSaving(false);
+  };
+
+  const uncommit=async()=>{
+    setSaving(true);
+    await sb.from("athletes").update({status:"active",committed_to:null}).eq("id",athlete.id);
+    await sb.from("activity_feed").insert({athlete_id:athlete.id,type:"status_change",message:`Verbal commitment to ${athlete.committed_to} has been withdrawn. Status set back to active.`,actor_name:"Staff"});
+    onUpdate({...athlete,status:"active",committed_to:null});
+    onClose();
+    setSaving(false);
+  };
+
+  return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.9)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{background:C.card,border:`1px solid ${C.border}`}}>
+
+      {/* Header */}
+      <div className="flex items-center justify-between p-5 border-b" style={{borderColor:C.border}}>
+        <div>
+          <div style={{color:C.text,fontWeight:700,fontSize:16}}>Commitment Status</div>
+          <div style={{color:C.muted,fontSize:12}}>{athlete.name}</div>
+        </div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      <div className="p-5">
+        {/* Already signed */}
+        {phase==="signed"&&<div className="text-center py-4">
+          <div style={{fontSize:48,marginBottom:12}}>🏆</div>
+          <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color:C.gold,marginBottom:4}}>NLI SIGNED</div>
+          <div style={{color:C.text,fontSize:15,fontWeight:600,marginBottom:4}}>{athlete.name}</div>
+          <div style={{color:C.muted,fontSize:13,marginBottom:20}}>→ {athlete.committed_to||school}</div>
+          <div className="p-3 rounded-xl" style={{background:C.green+"12",border:`1px solid ${C.green}22`}}>
+            <div style={{color:C.green,fontSize:12}}>✅ Recruiting officially closed. Board is locked.</div>
+          </div>
+        </div>}
+
+        {/* Verbal committed — show NLI option */}
+        {phase==="committed"&&<div>
+          <div className="rounded-2xl p-5 mb-4 text-center relative overflow-hidden" style={{background:`linear-gradient(135deg,${C.green}50,#16A34A30)`,border:`1px solid ${C.green}60`}}>
+            <div style={{fontSize:40,marginBottom:8}}>🎉</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>{athlete.name}</div>
+            <div style={{color:"rgba(255,255,255,0.7)",fontSize:13,marginBottom:6}}>Verbally committed to</div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:C.green}}>{athlete.committed_to||school}</div>
+          </div>
+          <button onClick={signNLI} disabled={saving} className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mb-3" style={{background:`linear-gradient(135deg,${C.gold},#D97706)`,color:"white",cursor:"pointer",boxShadow:`0 4px 20px ${C.gold}40`}}>
+            {saving?"Saving…":"✍️ Sign NLI — Close Recruiting"}
+          </button>
+          {!confirm&&<button onClick={()=>setConfirm(true)} className="w-full py-2 rounded-xl text-xs font-bold" style={{color:C.muted,cursor:"pointer"}}>Withdraw verbal commitment</button>}
+          {confirm&&<div className="p-4 rounded-xl mt-2" style={{background:C.red+"15",border:`1px solid ${C.red}33`}}>
+            <div style={{color:C.red,fontSize:13,fontWeight:600,marginBottom:8}}>Are you sure? This will reopen the board.</div>
+            <div className="flex gap-2">
+              <button onClick={uncommit} disabled={saving} className="flex-1 py-2 rounded-lg text-xs font-bold" style={{background:C.red,color:"white",cursor:"pointer"}}>Yes, withdraw</button>
+              <button onClick={()=>setConfirm(false)} className="flex-1 py-2 rounded-lg text-xs font-bold" style={{background:C.card2,color:C.muted,cursor:"pointer"}}>Cancel</button>
+            </div>
+          </div>}
+        </div>}
+
+        {/* Select school to commit to */}
+        {phase==="select"&&<div>
+          <div style={{color:C.muted,fontSize:12,marginBottom:14}}>Select the school or enter a name to log a verbal commitment.</div>
+
+          {topSchools.length>0&&<><div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>From Board</div>
+          <div className="flex flex-col gap-2 mb-4">
+            {topSchools.map(s=>{const{color}=getBand(s.score);return<button key={s.id} onClick={()=>setSchool(s.school)} className="flex items-center gap-3 p-3 rounded-xl text-left" style={{background:school===s.school?C.green+"18":C.card2,border:`1px solid ${school===s.school?C.green+"55":C.border}`,cursor:"pointer"}}>
+              <ScoreRing score={s.score} size={44}/>
+              <div className="flex-1"><div style={{color:C.text,fontWeight:700,fontSize:13}}>{s.school}</div><div style={{color:C.muted,fontSize:11}}>{s.conference}</div></div>
+              {school===s.school&&<div style={{color:C.green,fontSize:18}}>✓</div>}
+            </button>;})}
+          </div></>}
+
+          <div style={{color:C.muted,fontSize:10,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Or Enter School Name</div>
+          <input value={customSchool} onChange={e=>{setCustomSchool(e.target.value);setSchool(e.target.value);}} placeholder="School name…" className="w-full px-3 py-2.5 rounded-xl text-sm outline-none mb-4" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+
+          <button onClick={commitVerbal} disabled={!school.trim()||saving} className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2" style={{background:school.trim()?`linear-gradient(135deg,${C.green},#16A34A)`:C.border,color:"white",cursor:school.trim()?"pointer":"default",opacity:school.trim()?1:0.6,boxShadow:school.trim()?`0 4px 20px ${C.green}40`:"none"}}>
+            {saving?"Saving…":`🎉 Log Verbal Commitment → ${school||"..."}`}
+          </button>
+        </div>}
+      </div>
+    </div>
+  </div>;
+}
+
+// ── STAFF MESSAGING ───────────────────────────────────────────────────────────
+function StaffMessaging({sb,session,athlete,displayName,onClose}){
+  const[messages,setMessages]=useState([]);const[loading,setLoading]=useState(true);const[text,setText]=useState("");const[sending,setSending]=useState(false);
+  const textareaRef=React.useRef(null);
+
+  useEffect(()=>{loadMessages();},[athlete.id]);
+
+  const loadMessages=async()=>{
+    setLoading(true);
+    const{data}=await sb.from("staff_messages").select("*").eq("athlete_id",athlete.id).order("created_at",{ascending:true});
+    setMessages(data||[]);
+    setLoading(false);
+  };
+
+  const send=async()=>{
+    if(!text.trim())return;
+    setSending(true);
+    const msg={athlete_id:athlete.id,sender_id:session.user.id,sender_name:displayName||"Staff",message:text.trim(),visible_to_family:true};
+    const{data,error}=await sb.from("staff_messages").insert(msg).select().single();
+    if(!error&&data){
+      setMessages(m=>[...m,data]);
+      setText("");
+      // Also log to activity feed so family sees it
+      await sb.from("activity_feed").insert({athlete_id:athlete.id,actor_id:session.user.id,actor_name:displayName||"Staff",type:"staff_note",message:`📬 Staff note: "${text.trim().slice(0,80)}${text.length>80?"…":""}"`,meta:{}});
+    }
+    setSending(false);
+    setTimeout(()=>textareaRef.current?.focus(),50);
+  };
+
+  return<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{background:"rgba(0,0,0,0.9)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col" style={{background:C.card,border:`1px solid ${C.border}`,maxHeight:"80vh"}}>
+      {/* Header */}
+      <div className="flex items-center justify-between p-5 border-b flex-shrink-0" style={{borderColor:C.border}}>
+        <div>
+          <div style={{color:C.text,fontWeight:700,fontSize:16}}>Staff Notes</div>
+          <div style={{color:C.muted,fontSize:12}}>{athlete.name} · Visible to family in activity feed</div>
+        </div>
+        <button onClick={onClose} style={{color:C.muted,cursor:"pointer"}}><svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+        {loading&&<div className="text-center py-8" style={{color:C.muted}}>Loading…</div>}
+        {!loading&&messages.length===0&&<div className="text-center py-10">
+          <div style={{fontSize:32,marginBottom:8}}>📬</div>
+          <div style={{color:C.text,fontWeight:600,marginBottom:4}}>No notes yet</div>
+          <div style={{color:C.muted,fontSize:12}}>Staff notes appear in the family's activity feed. Use this to communicate recruiting updates, call summaries, or coaching intel.</div>
+        </div>}
+        {messages.map((m,i)=>(
+          <div key={m.id||i} className="p-4 rounded-xl" style={{background:C.card2,border:`1px solid ${C.border}`}}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style={{background:C.primary+"30",color:C.primary}}>{(m.sender_name||"S")[0]}</div>
+                <span style={{color:C.text,fontSize:12,fontWeight:600}}>{m.sender_name||"Staff"}</span>
+              </div>
+              <div style={{color:C.muted,fontSize:10}}>{m.created_at?new Date(m.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):""}</div>
+            </div>
+            <div style={{color:C.sub,fontSize:13,lineHeight:1.6}}>{m.message}</div>
+            {m.visible_to_family&&<div style={{color:C.muted,fontSize:10,marginTop:6}}>✓ Visible to family</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Composer */}
+      <div className="p-4 border-t flex-shrink-0" style={{borderColor:C.border}}>
+        <div className="flex gap-2">
+          <textarea ref={textareaRef} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Add a staff note… (visible to family in activity feed)" rows={2} className="flex-1 px-3 py-2.5 rounded-xl text-sm outline-none resize-none" style={{background:C.card2,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+          <button onClick={send} disabled={!text.trim()||sending} className="px-4 rounded-xl font-bold text-sm flex-shrink-0" style={{background:text.trim()?`linear-gradient(135deg,${C.primary},${C.fuchsia})`:C.card2,color:text.trim()?"white":C.muted,cursor:text.trim()?"pointer":"default"}}>
+            {sending?"…":"Send"}
+          </button>
+        </div>
+        <div style={{color:C.muted,fontSize:10,marginTop:6}}>Enter to send · Shift+Enter for new line</div>
+      </div>
+    </div>
   </div>;
 }
 

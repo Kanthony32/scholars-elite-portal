@@ -708,7 +708,7 @@ function StaffView({sb,session,displayName}){
 
   const load=async()=>{
     setLoading(true);
-    const{data:ath,error}=await sb.from("athletes").select("*").order("name");
+    const{data:ath,error}=await sb.from("athletes").select("*").order("team").order("name");
     if(error){setErr("Failed to load athletes: "+error.message);setLoading(false);return;}
     setAthletes(ath||[]);
     if(ath){
@@ -791,25 +791,57 @@ function StaffView({sb,session,displayName}){
     </div>;
   }
 
+  const[teamFilter,setTeamFilter]=useState("all");const[search,setSearch]=useState("");
+  const TEAMS=["all","17U","16U","15U"];
+  const TEAM_COLOR={"17U":C.primary,"16U":C.fuchsia,"15U":C.gold};
+  const filtered=athletes.filter(a=>{
+    const matchTeam=teamFilter==="all"||(a.team||"17U")===teamFilter;
+    const matchSearch=!search||a.name.toLowerCase().includes(search.toLowerCase())||a.position?.toLowerCase().includes(search.toLowerCase());
+    return matchTeam&&matchSearch;
+  });
+  const grouped=TEAMS.slice(1).reduce((acc,t)=>{acc[t]=filtered.filter(a=>(a.team||"17U")===t);return acc;},{});
+
   return<div>
-    <div className="flex items-center justify-between mb-5">
-      <div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:800,color:C.text}}>Roster</div><div style={{color:C.muted,fontSize:13}}>{athletes.length} athletes</div></div>
+    {/* Header */}
+    <div className="flex items-center justify-between mb-4">
+      <div><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color:C.text}}>Roster</div><div style={{color:C.muted,fontSize:12}}>{athletes.length} athletes · 3 teams</div></div>
       <button onClick={load} style={{color:C.muted,cursor:"pointer"}}><RefreshCw size={16}/></button>
     </div>
-    <div className="flex flex-col gap-3">
-      {athletes.map(a=>{
-        const ab=boards[a.id]||[];const scored=ab.map(s=>calcScore(s.factors||{}));const top=scored.length?Math.max(...scored):0;const{color}=getBand(top);const p1=ab.filter(s=>getBand(calcScore(s.factors||{})).band==="A1").length;
-        return<button key={a.id} onClick={()=>{setSelected(a.id);setTab("dashboard");loadFeed(a.id);}} className="flex items-center gap-4 p-4 rounded-2xl text-left w-full" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center font-black flex-shrink-0 text-sm" style={{background:`linear-gradient(135deg,${C.primary},${C.fuchsia})`,color:"white"}}>{a.name.split(" ").map(n=>n[0]).join("")}</div>
-          <div className="flex-1 min-w-0">
-            <div style={{color:C.text,fontWeight:700,fontSize:14}}>{a.name}</div>
-            <div style={{color:C.muted,fontSize:11}}>{a.position}·{a.height}·{a.grad_year}</div>
-            <div className="flex flex-wrap gap-1.5 mt-1"><PLBadge level={a.player_level||"PL3"}/><Badge color={C.gold}>GPA {a.gpa}</Badge>{p1>0&&<Badge color={C.red}>🔴 {p1} P1</Badge>}</div>
-          </div>
-          <div className="text-right flex-shrink-0">{top>0?<><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:800,color,lineHeight:1}}>{top}</div><div style={{color:C.muted,fontSize:10}}>top fit</div></>:<div style={{color:C.muted,fontSize:12}}>No board</div>}</div>
-        </button>;
-      })}
+    {/* Search */}
+    <div className="relative mb-3">
+      <svg xmlns="http://www.w3.org/2000/svg" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search athletes…" className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,fontFamily:"inherit"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
     </div>
+    {/* Team filter */}
+    <div className="flex gap-2 mb-5">
+      {TEAMS.map(t=><button key={t} onClick={()=>setTeamFilter(t)} className="px-3 py-1.5 rounded-xl text-xs font-bold" style={{background:teamFilter===t?(TEAM_COLOR[t]||C.primary):C.card,color:teamFilter===t?"white":C.muted,border:`1px solid ${teamFilter===t?(TEAM_COLOR[t]||C.primary):C.border}`,cursor:"pointer"}}>{t==="all"?"All Teams":t}</button>)}
+    </div>
+    {/* Team sections */}
+    {(teamFilter==="all"?["17U","16U","15U"]:[teamFilter]).map(team=>{
+      const teamAthletes=teamFilter==="all"?grouped[team]:filtered;
+      if(!teamAthletes||teamAthletes.length===0)return null;
+      const tc=TEAM_COLOR[team]||C.primary;
+      return<div key={team} className="mb-6">
+        {teamFilter==="all"&&<div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full" style={{background:tc}}/>
+          <div style={{color:tc,fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>{team} — {teamAthletes.length} athletes</div>
+        </div>}
+        <div className="flex flex-col gap-2">
+          {teamAthletes.map(a=>{
+            const ab=boards[a.id]||[];const scored=ab.map(s=>calcScore(s.factors||{}));const top=scored.length?Math.max(...scored):0;const{color}=getBand(top);const p1=ab.filter(s=>getBand(calcScore(s.factors||{})).band==="A1").length;
+            return<button key={a.id} onClick={()=>{setSelected(a.id);setTab("dashboard");loadFeed(a.id);}} className="flex items-center gap-3 p-3.5 rounded-xl text-left w-full" style={{background:C.card,border:`1px solid ${C.border}`,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.borderColor=tc} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black flex-shrink-0 text-xs" style={{background:tc+"22",color:tc,border:`1px solid ${tc}44`}}>{a.name.split(" ").map(n=>n[0]).join("")}</div>
+              <div className="flex-1 min-w-0">
+                <div style={{color:C.text,fontWeight:700,fontSize:13}}>{a.name}</div>
+                <div style={{color:C.muted,fontSize:10}}>{a.position}·{a.height}·{a.grad_year}</div>
+                <div className="flex flex-wrap gap-1 mt-1"><PLBadge level={a.player_level||"PL4"}/>{a.gpa&&<Badge color={C.gold}>GPA {a.gpa}</Badge>}{p1>0&&<Badge color={C.red}>🔴 {p1}</Badge>}</div>
+              </div>
+              <div className="text-right flex-shrink-0">{top>0?<><div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:800,color,lineHeight:1}}>{top}</div><div style={{color:C.muted,fontSize:9}}>top fit</div></>:<div style={{color:C.border,fontSize:10}}>—</div>}</div>
+            </button>;
+          })}
+        </div>
+      </div>;
+    })}
   </div>;
 }
 

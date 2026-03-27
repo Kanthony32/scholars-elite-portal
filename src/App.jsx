@@ -1494,10 +1494,22 @@ function App(){
     return()=>subscription?.unsubscribe();
   },[cfg]);
 
-  // Load profile when session changes
+  // Load profile when session changes — auto-create if missing
   useEffect(()=>{
     if(!sb||!session){setProfile(null);return;}
-    sb.from("profiles").select("*").eq("id",session.user.id).single().then(({data})=>setProfile(data));
+    sb.from("profiles").select("*").eq("id",session.user.id).single().then(async({data,error})=>{
+      if(data){
+        setProfile(data);
+      } else {
+        // Profile row missing — create it now (happens when trigger didn't fire at signup)
+        const role=session.user.user_metadata?.role||"staff";
+        const display_name=session.user.user_metadata?.display_name||session.user.email;
+        const{data:created}=await sb.from("profiles").upsert({
+          id:session.user.id,role,display_name
+        },{onConflict:"id"}).select().single();
+        setProfile(created||{id:session.user.id,role,display_name,athlete_id:null});
+      }
+    });
   },[session,sb]);
 
   // Check onboarding trigger for parents
@@ -1544,7 +1556,7 @@ function App(){
   const isStaff=profile?.role==="staff";
 
   // Loading states
-  if(!cfgLoaded||!sb||session===undefined||(!profile&&session))return<LoadingScreen msg="Loading portal…"/>;
+  if(!cfgLoaded||!sb||session===undefined)return<LoadingScreen msg="Loading portal…"/>;
   if(!session)return<AuthScreen sb={sb}/>;
 
   // Onboarding

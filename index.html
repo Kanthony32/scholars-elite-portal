@@ -6462,12 +6462,10 @@ function SchoolBoard({
     score: calcScore(s.factors || {})
   })).sort((a, b) => sort === "score" ? b.score - a.score : sort === "school" ? a.school.localeCompare(b.school) : parseInt((a.tier || "T3").slice(1)) - parseInt((b.tier || "T3").slice(1)));
   const existing = board.map(s => s.school);
-  const [divFilter, setDivFilter] = React.useState("All");
+  const [divFilter, setDivFilter] = useState("All");
   const filtered = SCHOOL_DB.filter(s => {
     const q = search.toLowerCase();
-    const ms = s.school.toLowerCase().includes(q) || (s.conference||"").toLowerCase().includes(q) || (s.state||"").toLowerCase().includes(q);
-    const md = divFilter === "All" || s.division === divFilter;
-    return ms && md && !existing.includes(s.school);
+    return (s.school.toLowerCase().includes(q) || (s.conference || "").toLowerCase().includes(q) || (s.state || "").toLowerCase().includes(q)) && (divFilter === "All" || s.division === divFilter) && !existing.includes(s.school);
   });
   const addScore = calcScore(factors);
   const addColor = getBand(addScore).color;
@@ -7065,29 +7063,7 @@ function SchoolBoard({
       flex: 1,
       padding: 20
     }
-  }, addStep === 1 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 6,
-      marginBottom: 12,
-      flexWrap: "wrap"
-    }
-  }, ["All", "D1", "D2", "D3", "NAIA", "JUCO"].map(function(dv) {
-    return /*#__PURE__*/React.createElement("button", {
-      key: dv,
-      onClick: function() { return setDivFilter(dv); },
-      style: {
-        padding: "5px 10px",
-        borderRadius: 8,
-        fontSize: 10,
-        fontWeight: 700,
-        cursor: "pointer",
-        background: divFilter === dv ? C.primary : C.card2,
-        color: divFilter === dv ? "white" : C.muted,
-        border: "1px solid " + (divFilter === dv ? C.primary : C.border)
-      }
-    }, dv);
-  })), /*#__PURE__*/React.createElement("div", {
+  }, addStep === 1 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("select", {value: divFilter, onChange: function(e) { return setDivFilter(e.target.value); }, style: {width:"100%",padding:"8px 12px",borderRadius:12,fontSize:12,fontWeight:700,outline:"none",marginBottom:10,background:C.card2,border:"1px solid "+C.border,color:C.sub,cursor:"pointer"}}, ["All","D1","D2","D3","NAIA","JUCO"].map(function(dv){ return /*#__PURE__*/React.createElement("option",{key:dv,value:dv},dv==="All"?"All Divisions":dv);})), /*#__PURE__*/React.createElement("div", {
     style: {
       position: "relative",
       marginBottom: 16

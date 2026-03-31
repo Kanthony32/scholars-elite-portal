@@ -7067,6 +7067,28 @@ function SchoolBoard({
     }
   }, addStep === 1 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
+      display: "flex",
+      gap: 6,
+      marginBottom: 12,
+      flexWrap: "wrap"
+    }
+  }, ["All", "D1", "D2", "D3", "NAIA", "JUCO"].map(function(dv) {
+    return /*#__PURE__*/React.createElement("button", {
+      key: dv,
+      onClick: function() { return setDivFilter(dv); },
+      style: {
+        padding: "5px 10px",
+        borderRadius: 8,
+        fontSize: 10,
+        fontWeight: 700,
+        cursor: "pointer",
+        background: divFilter === dv ? C.primary : C.card2,
+        color: divFilter === dv ? "white" : C.muted,
+        border: "1px solid " + (divFilter === dv ? C.primary : C.border)
+      }
+    }, dv);
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
       position: "relative",
       marginBottom: 16
     }
@@ -9904,13 +9926,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
               gap: 6,
               marginBottom: 12,
               flexWrap: "wrap"
-            }}>{["All", "D1", "D2", "D3", "NAIA", "JUCO"].map(dv => <button key={dv} onClick={() => setDivFilter(dv)} style={{
-                padding: "5px 10px",
-                borderRadius: 8,
-                fontSize: 10,
-                fontWeight: 700,
-                cursor: "pointer",
-                background: divFilter === dv ? C.primary : C.card2,
-                color: divFilter === dv ? "white" : C.muted,
-                border: `1px solid ${divFilter === dv ? C.primary : C.border}`
-              }}>{dv}</button>)}</div>>
+            }}>>

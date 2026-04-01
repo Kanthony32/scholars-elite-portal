@@ -82,25 +82,35 @@ const TIER_COLOR = {
   T1: "#DD1026",
   T2: "#EA7316",
   T3: "#F5A623",
-  T4: "#22C55E"
+  T4: "#22C55E",
+  T5: "#3B82F6",
+  T6: "#6B5E88",
+  "N/A": "#2A1D45"
 };
 const TIER_LABEL = {
   T1: "Elite National",
   T2: "Major / P4",
   T3: "High Mid-Major",
-  T4: "True Mid-Major"
+  T4: "True Mid-Major",
+  T5: "Low-Major / Top D2",
+  T6: "D2 / D3 / NAIA",
+  "N/A": "Unclassified"
 };
 const PL_COLOR = {
   PL1: "#DD1026",
   PL2: "#EA7316",
   PL3: "#F5A623",
-  PL4: "#22C55E"
+  PL4: "#22C55E",
+  PL5: "#3B82F6",
+  PL6: "#6B5E88"
 };
 const PL_LABEL = {
-  PL1: "Elite HM",
-  PL2: "P4 Caliber",
+  PL1: "Elite / National",
+  PL2: "High-Major / P4",
   PL3: "High Mid-Major",
-  PL4: "True Mid-Major"
+  PL4: "True Mid-Major",
+  PL5: "Low-Major D1",
+  PL6: "D2 / Developmental"
 };
 const TEAM_COLOR = {
   "17U": C.primary,
@@ -148,6 +158,21 @@ function getRecruit(p, t, s) {
   if (g === 0) return s >= 80 ? "Strong Fit" : "Target";
   if (g === 1) return s >= 75 ? "Target" : "Stretch";
   return "Likely Landing";
+}
+const ACTION_COLOR = {P1:"#DD1026",P2:"#EA7316",P3:"#F5A623",P4:"#6B5E88",P5:"#2A1D45"};
+const ACTION_LABEL = {P1:"Must Build Now",P2:"Active Outreach",P3:"Nurture",P4:"Monitor",P5:"Remove"};
+function getActionPriority(band, recruit) {
+  if (band === "A1" || band === "A2") {
+    if (recruit === "Strong Fit" || recruit === "Likely Landing" || recruit === "Target") return "P1";
+    return "P2";
+  }
+  if (band === "B1") {
+    if (recruit === "Target" || recruit === "Strong Fit") return "P2";
+    return "P3";
+  }
+  if (band === "B2") return "P3";
+  if (band === "C") return "P4";
+  return "P5";
 }
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
@@ -2139,9 +2164,10 @@ function Dashboard({
       style: {
         color
       }
-    }, getRecruit(plN, tN, s.score)))), /*#__PURE__*/React.createElement(ScorePill, {
-      score: s.score
-    }));
+    }, getRecruit(plN, tN, s.score)))), /*#__PURE__*/React.createElement("div", {style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}},
+    /*#__PURE__*/React.createElement(ScorePill, {score: s.score}),
+    (function(){ var _b=getBand(s.score),band=_b.band; var recruit=getRecruit(plN,parseInt((s.tier||"T3").replace("T","")),s.score); var p=getActionPriority(band,recruit); var c=ACTION_COLOR[p]; return /*#__PURE__*/React.createElement("span",{style:{fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:5,background:c+"22",color:c,border:"1px solid "+c+"33",whiteSpace:"nowrap"}},p+" · "+ACTION_LABEL[p]); })()
+    ));
   })) : /*#__PURE__*/React.createElement("div", {
     style: {
       borderRadius: 16,
@@ -2578,7 +2604,7 @@ function SchoolBoard({
   })).sort((a, b) => sort === "score" ? b.score - a.score : sort === "school" ? a.school.localeCompare(b.school) : parseInt((a.tier || "T3").slice(1)) - parseInt((b.tier || "T3").slice(1)));
   const existing = board.map(s => s.school);
   const [divFilter, setDivFilter] = useState("All");
-  const filtered = SCHOOL_DB.filter(s => { const q = search.toLowerCase(); return (s.school.toLowerCase().includes(q) || (s.conference||"").toLowerCase().includes(q) || (s.state||"").toLowerCase().includes(q)) && (divFilter === "All" || s.division === divFilter) && !existing.includes(s.school); });
+  const filtered = SCHOOL_DB.filter(s => { const q = search.toLowerCase(); return (s.school.toLowerCase().includes(q)||(s.conference||"").toLowerCase().includes(q)||(s.state||"").toLowerCase().includes(q))&&(divFilter==="All"||s.division===divFilter)&&!existing.includes(s.school); });
   const addScore = calcScore(factors);
   const addColor = getBand(addScore).color;
   const doAdd = async () => {
@@ -2780,7 +2806,9 @@ function SchoolBoard({
       tier: s.tier || "T3"
     }), /*#__PURE__*/React.createElement(Badge, {
       color: color
-    }, getRecruit(plN, tN, s.score)), hasOffer && /*#__PURE__*/React.createElement(Badge, {
+    }, getRecruit(plN, tN, s.score)),
+    (function(){ var recruit=getRecruit(plN,tN,s.score); var p=getActionPriority(band,recruit); var c=ACTION_COLOR[p]; return /*#__PURE__*/React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:3,borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:800,background:c+"22",color:c,border:"1px solid "+c+"44",whiteSpace:"nowrap"}},p+" · "+ACTION_LABEL[p]); })(),
+    hasOffer && /*#__PURE__*/React.createElement(Badge, {
       color: C.green
     }, "\u2713 Offer")))), /*#__PURE__*/React.createElement("div", {
       style: {

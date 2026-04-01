@@ -5594,7 +5594,27 @@ function StaffView({
         color: C.red
       }, "\uD83D\uDD34 ", p1, " A1"), a.status === "committed" && /*#__PURE__*/React.createElement(Badge, {
         color: C.green
-      }, "\uD83C\uDF89 ", a.committed_to))), /*#__PURE__*/React.createElement("div", {
+      }, "\uD83C\uDF89 ", a.committed_to)),
+      /*#__PURE__*/React.createElement("div", {style:{display:"flex",gap:4,marginTop:6,flexWrap:"wrap",alignItems:"center"}},
+        /*#__PURE__*/React.createElement("span",{style:{color:C.muted,fontSize:9,fontWeight:700,marginRight:2}},"PL:"),
+        ["PL1","PL2","PL3","PL4","PL5","PL6"].map(function(pl){
+          var active=(a.player_level||"PL4")===pl;
+          var c=PL_COLOR[pl]||C.muted;
+          return /*#__PURE__*/React.createElement("button",{
+            key:pl,
+            onClick:function(e){
+              e.stopPropagation();
+              var sb_i=getSb();
+              if(!sb_i)return;
+              sb_i.from("athletes").update({player_level:pl}).eq("id",a.id).then(function(){
+                setAthletes(function(prev){return prev.map(function(x){return x.id===a.id?Object.assign({},x,{player_level:pl}):x;});});
+              });
+            },
+            style:{padding:"3px 7px",borderRadius:6,fontSize:9,fontWeight:800,cursor:"pointer",background:active?c:"transparent",color:active?"white":c,border:"1px solid "+(active?c:c+"66"),transition:"all 0.15s"}
+          },pl);
+        })
+      )
+    ), /*#__PURE__*/React.createElement("div", {
         style: {
           textAlign: "right",
           flexShrink: 0

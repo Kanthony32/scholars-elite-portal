@@ -1,0 +1,10 @@
+import Link from 'next/link';
+import { FeaturedPlayerCard } from '@/components/featured-player-card';
+import { PlayerCard } from '@/components/player-card';
+import { getFeaturedPlayers, getPublicPlayers } from '@/lib/players';
+export default async function HomePage() {
+  const [featuredPlayers, players] = await Promise.all([getFeaturedPlayers(), getPublicPlayers()]);
+  const teams = new Set(players.map((player) => player.team));
+  const committed = players.filter((player) => player.publicStatus === 'committed').length;
+  return <><section className="hero"><div className="container hero-grid"><div className="hero-copy"><span className="eyebrow">Scholars Elite Girls Basketball • Real App Starter</span><h1>PUBLIC PROFILES. <span>PROTECTED STAFF DATA.</span></h1><p>V4 moves the portal out of fake front-end security and into a real app structure: Next.js App Router, Supabase auth, protected route handlers, and row-level access for staff-only recruiting data.</p><div className="hero-actions"><Link href="/prospects" className="primary-button">Browse prospects</Link><Link href="/staff" className="secondary-button">Open staff workspace</Link></div><div className="hero-metrics"><div className="metric-tile"><span>Public profiles</span><strong>{players.length}</strong></div><div className="metric-tile"><span>Program teams</span><strong>{teams.size}</strong></div><div className="metric-tile"><span>Committed prospects</span><strong>{committed}</strong></div></div></div><div className="featured-grid">{featuredPlayers.map((player) => <FeaturedPlayerCard key={player.id} player={player} />)}</div></div></section><section className="section-block"><div className="container"><div className="section-header"><div><h2>Featured public profiles</h2><p className="page-subtitle">Raegan Wells-Bradley and Damiya Carter lead the portal because production still matters.</p></div><Link href="/prospects" className="ghost-button">View all prospects</Link></div><div className="card-grid">{players.slice(0, 6).map((player) => <PlayerCard key={player.id} player={player} />)}</div></div></section></>;
+}

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scholars Coach Access — Invite System Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#07050E;--card:#0F0B1A;--raised:#181228;--bd:#241A38;--bl:#352850;--purple:#602F96;--ph:#7B3DB8;--fuchsia:#C233BF;--red:#DD1026;--text:#EEE8F7;--muted:#9D8FB8;--dim:#5C5070;--green:#22C55E;--warn:#F59E0B}
+body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;min-height:100vh}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#352850;border-radius:999px}
+.page-bg{min-height:100vh;background:radial-gradient(circle at top left,rgba(96,47,150,.22),transparent 30%),radial-gradient(circle at top right,rgba(194,51,191,.14),transparent 24%),linear-gradient(180deg,#090613,#07050E)}
+.nav{background:rgba(15,11,26,.96);border-bottom:1px solid var(--bd);height:58px;padding:0 28px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:10}
+.nav-logo{display:flex;align-items:center;gap:8px;margin-right:auto}
+.nav-dot{width:8px;height:8px;border-radius:2px;background:var(--fuchsia);box-shadow:0 0 10px var(--fuchsia)}
+.nav-brand,.nav-sub{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.1em}.nav-sub{color:var(--muted);letter-spacing:.06em}
+.nav-link{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--muted);padding:7px 12px;border-radius:6px;border:1px solid transparent;cursor:pointer;transition:all .15s}
+.nav-link:hover,.nav-link.active{color:var(--text);background:var(--raised);border-color:var(--bl)}
+.shell{max-width:1380px;margin:0 auto;padding:26px 28px 40px}
+.topline{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:18px}
+.kicker{display:flex;align-items:center;gap:10px;margin-bottom:14px}.kline{width:36px;height:2px;background:linear-gradient(to right,var(--purple),var(--fuchsia));border-radius:2px}.ktext{font-size:10px;font-weight:700;color:var(--fuchsia);letter-spacing:.16em;text-transform:uppercase}
+.hero-title{font-family:'Barlow Condensed',sans-serif;font-size:56px;font-weight:800;line-height:.92;letter-spacing:-.02em}.hero-title span{color:var(--purple)}
+.hero-copy{font-size:14px;color:var(--muted);line-height:1.7;max-width:620px;margin-top:14px}
+.tabbar{display:flex;gap:8px;flex-wrap:wrap}
+.tab{background:var(--card);border:1px solid var(--bd);border-radius:7px;color:var(--muted);padding:10px 16px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.08em;cursor:pointer;transition:all .15s}
+.tab.active,.tab:hover{color:var(--text);border-color:var(--purple);background:rgba(96,47,150,.16)}
+.layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:18px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.ch{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--bd)}
+.ch-bar{width:3px;height:14px;border-radius:2px;background:linear-gradient(to bottom,var(--purple),var(--fuchsia))}
+.ch-title{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.ch-badge{margin-left:auto;font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(194,51,191,.1);border:1px solid rgba(194,51,191,.35);color:var(--fuchsia)}
+.cb{padding:18px}
+.note{background:var(--raised);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;color:var(--muted);font-size:12px;line-height:1.6;margin-top:12px}
+.spec{display:grid;gap:10px}.spec-item{display:flex;gap:8px;align-items:flex-start}.spec-dot{width:15px;height:15px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;background:rgba(96,47,150,.18);color:var(--purple);margin-top:1px}.spec-txt{font-size:12px;color:var(--muted);line-height:1.55}
+.browser{background:#0A0812;border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.browser-top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#100C18;border-bottom:1px solid var(--bd)}
+.traffic{display:flex;gap:6px}.ball{width:10px;height:10px;border-radius:50%}.ball.r{background:#FB7185}.ball.y{background:#FBBF24}.ball.g{background:#34D399}
+.url{flex:1;background:#090611;border:1px solid var(--bd);border-radius:999px;padding:8px 14px;font-size:12px;color:var(--dim)}
+.viewport{position:relative;min-height:840px;background:linear-gradient(155deg,#090613,#0D0720 45%,#110823)}
+.viewport-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(96,47,150,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(96,47,150,.05) 1px,transparent 1px);background-size:52px 52px;pointer-events:none}
+.viewport-gl{position:absolute;left:-100px;top:-80px;width:560px;height:480px;background:radial-gradient(circle,rgba(96,47,150,.28),transparent 70%)}
+.viewport-gr{position:absolute;right:-50px;top:-20px;width:460px;height:400px;background:radial-gradient(circle,rgba(194,51,191,.16),transparent 70%)}
+.view{position:relative;padding:28px}
+.hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:22px}
+.eye{display:flex;align-items:center;gap:10px;margin-bottom:18px}.eye-line{width:32px;height:2px;background:linear-gradient(to right,var(--purple),var(--fuchsia));border-radius:2px}.eye-text{font-size:10px;font-weight:700;color:var(--fuchsia);letter-spacing:.15em;text-transform:uppercase}
+.h1{font-family:'Barlow Condensed',sans-serif;font-size:66px;font-weight:800;line-height:.9;letter-spacing:-.02em;margin-bottom:14px}.h1 span{color:var(--purple)}
+.copy{font-size:14px;color:var(--muted);line-height:1.75;max-width:520px}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.pill{display:inline-flex;align-items:center;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:700;letter-spacing:.06em;white-space:nowrap}.pp{background:rgba(96,47,150,.2);border:1px solid rgba(96,47,150,.5);color:var(--purple)}.pf{background:rgba(194,51,191,.12);border:1px solid rgba(194,51,191,.35);color:var(--fuchsia)}.pg{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);color:var(--green)}.pm{background:rgba(157,143,184,.08);border:1px solid rgba(157,143,184,.25);color:var(--muted)}
+.form-card{max-width:520px;margin:8px auto 0;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:22px}
+.form-title{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:800;line-height:1}.form-sub{font-size:13px;color:var(--muted);line-height:1.7;margin-top:10px}
+.field{margin-top:16px}.field label{display:block;font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}.input,.select,.textarea{width:100%;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:13px 14px;outline:none}.input:focus,.select:focus,.textarea:focus{border-color:var(--purple)}
+.btn{cursor:pointer;border:none;border-radius:8px;font-family:'Barlow',sans-serif;font-weight:700;letter-spacing:.04em;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:13px;padding:12px 18px}.btn-p{background:var(--purple);color:#fff}.btn-p:hover{background:var(--ph)}.btn-g{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--bl)}
+.success{margin-top:14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.32);border-radius:8px;padding:12px 14px;color:#D1FAE5;font-size:13px;line-height:1.65}
+.deny-wrap{max-width:620px;margin:64px auto 0;text-align:center}.deny-icon{width:88px;height:88px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;background:rgba(221,16,38,.12);border:1px solid rgba(221,16,38,.34);font-size:34px}.deny-copy{font-size:15px;color:var(--muted);line-height:1.8;max-width:540px;margin:0 auto}.alert{margin-top:20px;background:rgba(221,16,38,.08);border:1px solid rgba(221,16,38,.3);border-radius:8px;padding:14px 16px;color:#FECACA;font-size:13px;line-height:1.7;text-align:left}
+.admin-grid{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px}.side-card .item{padding:12px 14px;border-radius:8px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.06em;border:1px solid transparent;margin-bottom:8px}.side-card .item.active{background:rgba(96,47,150,.18);border-color:rgba(96,47,150,.35);color:var(--text)}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}.metric{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}.metric-l{font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}.metric-v{font-family:'Barlow Condensed',sans-serif;font-size:34px;font-weight:800;line-height:1;margin-top:8px}
+.invite-grid{display:grid;grid-template-columns:1.2fr .6fr auto;gap:10px;margin-bottom:18px}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:12px 8px;border-bottom:1px solid var(--bd);text-align:left}.table th{font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}.table td{font-size:13px}.role{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:10px;font-weight:700;letter-spacing:.06em}.role.admin{background:rgba(194,51,191,.12);border:1px solid rgba(194,51,191,.35);color:var(--fuchsia)}.role.coach{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35);color:var(--green)}.role.staff{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);color:var(--warn)}
+.status.accepted{color:#86EFAC;font-weight:700}.status.pending{color:#FCD34D;font-weight:700}.status.blocked{color:#FCA5A5;font-weight:700}
+.footer{max-width:1380px;margin:0 auto;padding:14px 28px 24px;color:var(--dim);font-size:11px;letter-spacing:.08em}
+@media(max-width:1080px){.layout{grid-template-columns:1fr}.admin-grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.hero-title{font-size:44px}.h1{font-size:52px}}
+@media(max-width:680px){.shell{padding:18px 18px 34px}.nav{padding:0 16px}.hero-title{font-size:36px}.h1{font-size:40px}.metrics{grid-template-columns:1fr}.invite-grid{grid-template-columns:1fr}.viewport{min-height:auto}}
+</style>
+</head>
+<body>
+<div class="page-bg">
+  <nav class="nav">
+    <div class="nav-logo"><div class="nav-dot"></div><span class="nav-brand">SCHOLARS</span><span class="nav-sub">&nbsp;COACH ACCESS</span></div>
+    <button class="nav-link active" data-tab="login">LOGIN</button>
+    <button class="nav-link" data-tab="denied">BLOCKED</button>
+    <button class="nav-link" data-tab="admin">INVITES</button>
+  </nav>
+  <div class="shell">
+    <div class="topline">
+      <div>
+        <div class="kicker"><div class="kline"></div><div class="ktext">Scholars Elite • Invite-Only Access System</div></div>
+        <div class="hero-title">MATCHED TO THE <span>PORTAL LOOK.</span></div>
+        <div class="hero-copy">Same premium dark shell. Same condensed hierarchy. Same purple/fuchsia language. This is what the coach access flow looks like when it belongs inside the actual Scholars ecosystem instead of next to it.</div>
+      </div>
+      <div class="tabbar">
+        <button class="tab active" data-tab="login">LOGIN SCREEN</button>
+        <button class="tab" data-tab="denied">NOT AUTHORIZED</button>
+        <button class="tab" data-tab="admin">ADMIN DASHBOARD</button>
+      </div>
+    </div>
+    <div class="layout">
+      <div class="card">
+        <div class="ch"><div class="ch-bar"></div><div class="ch-title">Build Notes</div><div class="ch-badge">Preview V2</div></div>
+        <div class="cb" id="leftCopy"></div>
+      </div>
+      <div class="browser">
+        <div class="browser-top"><div class="traffic"><span class="ball r"></span><span class="ball y"></span><span class="ball g"></span></div><div class="url" id="urlText">scholarselitegirls.com/sign-in</div></div>
+        <div class="viewport"><div class="viewport-grid"></div><div class="viewport-gl"></div><div class="viewport-gr"></div>
+          <div class="view" id="view-login"><div class="hero"><div><div class="eye"><div class="eye-line"></div><div class="eye-text">Verified Coach Access • Magic Link</div></div><div class="h1">INVITE-ONLY <br><span>LOGIN.</span></div><div class="copy">College coaches and internal staff get in with a magic link, but only if their email is on the approved invite list. Clean access for the right people. Hard wall for everybody else.</div><div class="pills"><span class="pill pp">WHITELISTED</span><span class="pill pf">ROLE-BASED ACCESS</span><span class="pill pg">SECURE SESSION</span></div></div></div><div class="form-card"><div class="form-title">Coach Sign In</div><div class="form-sub">Use your verified work email. If your program has been approved, the portal sends a magic login link and routes you into staff access.</div><div class="field"><label>Work Email</label><input class="input" value="assistantcoach@school.edu" readonly></div><button class="btn btn-p" style="width:100%;margin-top:16px">Send Magic Link →</button><div class="success">Magic link sent. After click-through, the server checks <strong>coach_invites</strong> before opening the staff workspace. That is the difference between authentication and authorization — and most people still confuse the two.</div></div></div>
+          <div class="view" id="view-denied" style="display:none"><div class="deny-wrap"><div class="deny-icon">🔒</div><div class="eye" style="justify-content:center"><div class="eye-line"></div><div class="eye-text">Authorization Failed</div></div><div class="h1" style="margin-bottom:10px">NOT ON THE <span>LIST.</span></div><div class="deny-copy">This portal is restricted to verified college coaches and approved internal staff. The login can succeed and the user can still be denied. That is exactly what we want if the email is missing, inactive, or not approved.</div><div class="alert"><strong>Why this matters:</strong> this screen proves the system is no longer relying on fake front-end hiding. The user session exists, but access still gets blocked because the whitelist says no. That’s real control, not theater.</div></div></div>
+          <div class="view" id="view-admin" style="display:none"><div class="hero"><div><div class="eye"><div class="eye-line"></div><div class="eye-text">Staff Workspace • Access Control</div></div><div class="h1">INVITES & <span>ROLES.</span></div><div class="copy">Admins can add coaches, assign roles, track acceptance, and lock access down without spraying links around like confetti. This is the control room.</div></div></div><div class="admin-grid"><div class="card side-card"><div class="ch"><div class="ch-bar"></div><div class="ch-title">Staff Navigation</div></div><div class="cb"><div class="item active">Invites & Access</div><div class="item">Coach Directory</div><div class="item">Player Signals</div><div class="item">Internal Notes</div><div class="item">Settings</div><div class="note">Best next add: domain allowlist, invite expiration, and coach activity tracking. That’s when this stops being tidy and starts becoming dangerous in the right way.</div></div></div><div><div class="metrics"><div class="metric"><div class="metric-l">Total Invites</div><div class="metric-v">42</div></div><div class="metric"><div class="metric-l">Accepted</div><div class="metric-v">29</div></div><div class="metric"><div class="metric-l">Pending</div><div class="metric-v">11</div></div><div class="metric"><div class="metric-l">Admins</div><div class="metric-v">2</div></div></div><div class="card"><div class="ch"><div class="ch-bar"></div><div class="ch-title">Invite a Coach</div><div class="ch-badge">Admin Only</div></div><div class="cb"><div class="invite-grid"><input class="input" value="assistantcoach@bigschool.edu" readonly><select class="select"><option>coach</option><option>staff</option><option>admin</option></select><button class="btn btn-p">Send</button></div><table class="table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Last Action</th></tr></thead><tbody><tr><td>recruiting@stjohns.edu</td><td><span class="role admin">admin</span></td><td class="status accepted">Accepted</td><td>Viewed Raegan profile • 2h ago</td></tr><tr><td>coach@midmajor.edu</td><td><span class="role coach">coach</span></td><td class="status pending">Pending</td><td>Invite sent • today</td></tr><tr><td>ops@scholarselite.com</td><td><span class="role staff">staff</span></td><td class="status accepted">Accepted</td><td>Added 3 internal notes • today</td></tr><tr><td>randomuser@gmail.com</td><td><span class="role coach">coach</span></td><td class="status blocked">Blocked</td><td>Rejected by whitelist policy</td></tr></tbody></table></div></div></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">SCHOLARS ELITE ACADEMY • THE WESTVIEW GROUP • MATCHED PREVIEW FOR LOGIN + INVITE FLOW</div>
+</div>
+<script>
+const tabs=[...document.querySelectorAll('[data-tab]')];
+const views={login:document.getElementById('view-login'),denied:document.getElementById('view-denied'),admin:document.getElementById('view-admin')};
+const urlText=document.getElementById('urlText');
+const leftCopy=document.getElementById('leftCopy');
+const copy={login:`<div class="spec"><div class="spec-item"><div class="spec-dot">✓</div><div class="spec-txt"><strong>Magic-link entry:</strong> coach enters a verified work email and gets a clean login flow without dealing with a password graveyard.</div></div><div class="spec-item"><div class="spec-dot">✓</div><div class="spec-txt"><strong>Whitelist enforcement:</strong> the session still gets checked against <code>coach_invites</code> before staff pages open.</div></div><div class="spec-item"><div class="spec-dot">✓</div><div class="spec-txt"><strong>Portal match:</strong> same visual hierarchy as the player portal, so the access flow feels native instead of bolted on.</div></div></div><div class="note">This screen is the front door. Friendly for real coaches. Annoying for the wrong people. That balance matters.</div>`,denied:`<div class="spec"><div class="spec-item"><div class="spec-dot">!</div><div class="spec-txt"><strong>Clear boundary:</strong> user can authenticate and still be denied if they are not invited, inactive, or blocked.</div></div><div class="spec-item"><div class="spec-dot">!</div><div class="spec-txt"><strong>No fake security:</strong> this is where the system proves that protected content is enforced server-side, not just hidden in the UI.</div></div><div class="spec-item"><div class="spec-dot">!</div><div class="spec-txt"><strong>Better trust:</strong> the message is firm, tidy, and professional — not noisy, not apologetic, not messy.</div></div></div><div class="note">Authentication says “who are you?” Authorization says “what are you allowed to see?” Too many systems stop after the first question. That’s lazy.</div>`,admin:`<div class="spec"><div class="spec-item"><div class="spec-dot">✓</div><div class="spec-txt"><strong>Invite issuance:</strong> add coaches by email and set <em>coach</em>, <em>staff</em>, or <em>admin</em> before they ever touch sensitive data.</div></div><div class="spec-item"><div class="spec-dot">✓</div><div class="spec-txt"><strong>Status visibility:</strong> accepted, pending, and blocked are visible at a glance so access management stays clean.</div></div><div class="spec-item"><div class="spec-dot">✓</div><div class="spec-txt"><strong>Future leverage:</strong> this becomes the foundation for coach activity tracking — who looked at Raegan, who revisited Damaya, and when.</div></div></div><div class="note">The invite dashboard is not glamorous. It is also where control lives. Glamour without control is how people leak their own leverage.</div>`};
+function setTab(name){tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===name));Object.entries(views).forEach(([k,v])=>v.style.display=k===name?'block':'none');urlText.textContent=name==='login'?'scholarselitegirls.com/sign-in':name==='denied'?'scholarselitegirls.com/not-authorized':'scholarselitegirls.com/staff/invites';leftCopy.innerHTML=copy[name];}
+tabs.forEach(tab=>tab.addEventListener('click',()=>setTab(tab.dataset.tab)));setTab('login');
+</script>
+</body>
+</html>
